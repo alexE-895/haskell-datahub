@@ -19,7 +19,7 @@ import Servant
 
 import DataHub.API (API, apiProxy)
 import DataHub.Database
-  ( DatabaseConfig
+  ( DatabasePool
   , checkDatabase
   , findCategoryById
   , listCategories
@@ -34,9 +34,9 @@ healthHandler :: Handler HealthResponse
 healthHandler =
   pure (HealthResponse "ok" "haskell-datahub")
 
-readinessHandler :: DatabaseConfig -> Handler ReadinessResponse
-readinessHandler databaseConfig = do
-  databaseReady <- liftIO (checkDatabase databaseConfig)
+readinessHandler :: DatabasePool -> Handler ReadinessResponse
+readinessHandler databasePool = do
+  databaseReady <- liftIO (checkDatabase databasePool)
 
   if databaseReady
     then
@@ -49,13 +49,13 @@ readinessHandler databaseConfig = do
     else
       throwError err503
 
-categoriesHandler :: DatabaseConfig -> Handler [Category]
-categoriesHandler databaseConfig =
-  liftIO (listCategories databaseConfig)
+categoriesHandler :: DatabasePool -> Handler [Category]
+categoriesHandler databasePool =
+  liftIO (listCategories databasePool)
 
-categoryByIdHandler :: DatabaseConfig -> Int64 -> Handler Category
-categoryByIdHandler databaseConfig categoryId = do
-  category <- liftIO (findCategoryById databaseConfig categoryId)
+categoryByIdHandler :: DatabasePool -> Int64 -> Handler Category
+categoryByIdHandler databasePool categoryId = do
+  category <- liftIO (findCategoryById databasePool categoryId)
 
   case category of
     Just foundCategory ->
@@ -64,14 +64,14 @@ categoryByIdHandler databaseConfig categoryId = do
     Nothing ->
       throwError err404
 
-server :: DatabaseConfig -> Server API
-server databaseConfig =
+server :: DatabasePool -> Server API
+server databasePool =
        healthHandler
-  :<|> readinessHandler databaseConfig
-  :<|> categoriesHandler databaseConfig
-  :<|> categoryByIdHandler databaseConfig
+  :<|> readinessHandler databasePool
+  :<|> categoriesHandler databasePool
+  :<|> categoryByIdHandler databasePool
 
-runServer :: DatabaseConfig -> IO ()
-runServer databaseConfig = do
+runServer :: DatabasePool -> IO ()
+runServer databasePool = do
   putStrLn "Haskell DataHub listening on http://127.0.0.1:8080"
-  run 8080 (serve apiProxy (server databaseConfig))
+  run 8080 (serve apiProxy (server databasePool))

@@ -4,6 +4,7 @@ module DataHub.App
 
 import DataHub.Database
   ( checkDatabase
+  , createDatabasePool
   , loadDatabaseConfig
   )
 import DataHub.Server (runServer)
@@ -11,10 +12,12 @@ import DataHub.Server (runServer)
 runApp :: IO ()
 runApp = do
   databaseConfig <- loadDatabaseConfig
-  databaseReady <- checkDatabase databaseConfig
+  databasePool <- createDatabasePool databaseConfig
+
+  databaseReady <- checkDatabase databasePool
 
   if databaseReady
-    then putStrLn "PostgreSQL connection: OK"
-    else putStrLn "PostgreSQL connection: FAILED"
+    then putStrLn "PostgreSQL connection pool: OK"
+    else putStrLn "PostgreSQL connection pool: FAILED"
 
-  runServer databaseConfig
+  runServer databasePool

@@ -2,21 +2,30 @@
 
 module DataHub.Database
   ( DatabaseConfig (..)
+  , DatabasePool
   , checkDatabase
+  , createDatabasePool
   , findCategoryById
   , listCategories
   , loadDatabaseConfig
   ) where
 
-import Control.Exception (SomeException, bracket, try)
+import Control.Exception (SomeException, try)
 import Data.Int (Int64)
 import Data.Maybe
   ( fromMaybe
   , listToMaybe
   )
+import Data.Pool
+  ( Pool
+  , defaultPoolConfig
+  , newPool
+  , withResource
+  )
 import Data.Word (Word16)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (..)
+  , Connection
   , Only (Only)
   , close
   , connect
@@ -43,6 +52,8 @@ data DatabaseConfig = DatabaseConfig
   , dbPassword :: String
   }
   deriving (Show)
+
+type DatabasePool = Pool Connection
 
 newtype CategoryRow = CategoryRow
   { unCategoryRow :: Category
@@ -87,49 +98,47 @@ toConnectInfo config =
     , connectPassword = dbPassword config
     }
 
-checkDatabase :: DatabaseConfig -> IO Bool
-checkDatabase config = do
+createDatabasePool :: DatabaseConfig -> IO DatabasePool
+createDatabasePool config =
+  newPool
+    ( defaultPoolConfig
+        (connect (toConnectInfo config))
+        close
+        60
+        10
+    )
+
+checkDatabase :: DatabasePool -> IO Bool
+checkDatabase pool = do
   result <-
     try
-      ( bracket
-          (connect (toConnectInfo config))
-          close
-          (\connection -> do
-              rows <- query_ connection "SELECT 1" :: IO [Only Int]
-              pure (rows == [Only 1])
-          )
+      ( withResource pool $ \connection -> do
+          rows <- query_ connection "SELECT 1" :: IO [Only Int]
+          pure (rows == [Only 1])
       )
       :: IO (Either SomeException Bool)
 
   pure (either (const False) id result)
 
-listCategories :: DatabaseConfig -> IO [Category]
-listCategories config =
-  bracket
-    (connect (toConnectInfo config))
-    close
-    (\connection -> do
-        rows <-
-          query_
-            connection
-            "SELECT id, name, description, parent_id FROM categories ORDER BY id"
-            :: IO [CategoryRow]
+listCategories :: DatabasePool -> IO [Category]
+listCategories pool =
+  withResource pool $ \connection -> do
+    rows <-
+      query_
+        connection
+        "SELECT id, name, description, parent_id FROM categories ORDER BY id"
+        :: IO [CategoryRow]
 
-        pure (map unCategoryRow rows)
-    )
+    pure (map unCategoryRow rows)
 
-findCategoryById :: DatabaseConfig -> Int64 -> IO (Maybe Category)
-findCategoryById config categoryId =
-  bracket
-    (connect (toConnectInfo config))
-    close
-    (\connection -> do
-        rows <-
-          query
-            connection
-            "SELECT id, name, description, parent_id FROM categories WHERE id = ?"
-            (Only categoryId)
-            :: IO [CategoryRow]
+findCategoryById :: DatabasePool -> Int64 -> IO (Maybe Category)
+findCategoryById pool categoryId =
+  withResource pool $ \connection -> do
+    rows <-
+      query
+        connection
+        "SELECT id, name, description, parent_id FROM categories WHERE id = ?"
+        (Only categoryId)
+        :: IO [CategoryRow]
 
-        pure (unCategoryRow <$> listToMaybe rows)
-    )
+    pure (unCategoryRow <$> listToMaybe rows)

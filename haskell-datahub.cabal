@@ -79,6 +79,7 @@ library
         aeson,
         servant,
         postgresql-simple,
+        resource-pool,
         servant-server,
         text,
         transformers,
