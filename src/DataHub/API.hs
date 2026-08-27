@@ -7,12 +7,21 @@ module DataHub.API
   ) where
 
 import Data.Proxy (Proxy (Proxy))
-import Servant (Get, JSON, type (:>))
+import Servant
+  ( Get
+  , JSON
+  , type (:<|>)
+  , type (:>)
+  )
 
-import DataHub.Types (HealthResponse)
+import DataHub.Types
+  ( HealthResponse
+  , ReadinessResponse
+  )
 
 type API =
-  "health" :> Get '[JSON] HealthResponse
+       "health" :> Get '[JSON] HealthResponse
+  :<|> "ready"  :> Get '[JSON] ReadinessResponse
 
 apiProxy :: Proxy API
 apiProxy = Proxy

@@ -2,6 +2,7 @@
 
 module DataHub.Types
   ( HealthResponse (..)
+  , ReadinessResponse (..)
   ) where
 
 import Data.Aeson (ToJSON (toJSON), object, (.=))
@@ -17,4 +18,18 @@ instance ToJSON HealthResponse where
     object
       [ "status" .= healthStatus response
       , "service" .= healthService response
+      ]
+
+data ReadinessResponse = ReadinessResponse
+  { readinessStatus :: Text
+  , readinessService :: Text
+  , readinessDatabase :: Text
+  }
+
+instance ToJSON ReadinessResponse where
+  toJSON response =
+    object
+      [ "status" .= readinessStatus response
+      , "service" .= readinessService response
+      , "database" .= readinessDatabase response
       ]

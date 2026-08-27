@@ -62,6 +62,7 @@ library
     -- Modules exported by the library.
     exposed-modules:
         DataHub.App
+        DataHub.Database
         DataHub.API
         DataHub.Server
         DataHub.Types
@@ -77,8 +78,10 @@ library
         base ^>=4.20.2.0,
         aeson,
         servant,
+        postgresql-simple,
         servant-server,
         text,
+        transformers,
         wai,
         warp
 
