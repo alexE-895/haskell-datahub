@@ -6,9 +6,11 @@ module DataHub.API
   , apiProxy
   ) where
 
+import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
 import Servant
-  ( Get
+  ( Capture
+  , Get
   , JSON
   , type (:<|>)
   , type (:>)
@@ -21,9 +23,12 @@ import DataHub.Types
   )
 
 type API =
-       "health"     :> Get '[JSON] HealthResponse
-  :<|> "ready"      :> Get '[JSON] ReadinessResponse
+       "health" :> Get '[JSON] HealthResponse
+  :<|> "ready" :> Get '[JSON] ReadinessResponse
   :<|> "categories" :> Get '[JSON] [Category]
+  :<|> "categories"
+        :> Capture "categoryId" Int64
+        :> Get '[JSON] Category
 
 apiProxy :: Proxy API
 apiProxy = Proxy

@@ -3,12 +3,17 @@
 module DataHub.Database
   ( DatabaseConfig (..)
   , checkDatabase
+  , findCategoryById
   , listCategories
   , loadDatabaseConfig
   ) where
 
 import Control.Exception (SomeException, bracket, try)
-import Data.Maybe (fromMaybe)
+import Data.Int (Int64)
+import Data.Maybe
+  ( fromMaybe
+  , listToMaybe
+  )
 import Data.Word (Word16)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (..)
@@ -16,6 +21,7 @@ import Database.PostgreSQL.Simple
   , close
   , connect
   , defaultConnectInfo
+  , query
   , query_
   )
 import Database.PostgreSQL.Simple.FromRow
@@ -110,4 +116,20 @@ listCategories config =
             :: IO [CategoryRow]
 
         pure (map unCategoryRow rows)
+    )
+
+findCategoryById :: DatabaseConfig -> Int64 -> IO (Maybe Category)
+findCategoryById config categoryId =
+  bracket
+    (connect (toConnectInfo config))
+    close
+    (\connection -> do
+        rows <-
+          query
+            connection
+            "SELECT id, name, description, parent_id FROM categories WHERE id = ?"
+            (Only categoryId)
+            :: IO [CategoryRow]
+
+        pure (unCategoryRow <$> listToMaybe rows)
     )

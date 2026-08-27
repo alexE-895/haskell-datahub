@@ -5,10 +5,12 @@ module DataHub.Server
   ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Int (Int64)
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Handler
   , Server
+  , err404
   , err503
   , serve
   , throwError
@@ -19,6 +21,7 @@ import DataHub.API (API, apiProxy)
 import DataHub.Database
   ( DatabaseConfig
   , checkDatabase
+  , findCategoryById
   , listCategories
   )
 import DataHub.Types
@@ -50,11 +53,23 @@ categoriesHandler :: DatabaseConfig -> Handler [Category]
 categoriesHandler databaseConfig =
   liftIO (listCategories databaseConfig)
 
+categoryByIdHandler :: DatabaseConfig -> Int64 -> Handler Category
+categoryByIdHandler databaseConfig categoryId = do
+  category <- liftIO (findCategoryById databaseConfig categoryId)
+
+  case category of
+    Just foundCategory ->
+      pure foundCategory
+
+    Nothing ->
+      throwError err404
+
 server :: DatabaseConfig -> Server API
 server databaseConfig =
        healthHandler
   :<|> readinessHandler databaseConfig
   :<|> categoriesHandler databaseConfig
+  :<|> categoryByIdHandler databaseConfig
 
 runServer :: DatabaseConfig -> IO ()
 runServer databaseConfig = do
