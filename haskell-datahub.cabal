@@ -63,6 +63,8 @@ library
     exposed-modules:
         DataHub.App
         DataHub.Database
+        DataHub.Repository.Category
+        DataHub.Service.Category
         DataHub.API
         DataHub.Server
         DataHub.Types

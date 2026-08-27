@@ -12,12 +12,15 @@ import Servant
   ( Capture
   , Get
   , JSON
+  , PostCreated
+  , ReqBody
   , type (:<|>)
   , type (:>)
   )
 
 import DataHub.Types
   ( Category
+  , CreateCategoryRequest
   , HealthResponse
   , ReadinessResponse
   )
@@ -29,6 +32,9 @@ type API =
   :<|> "categories"
         :> Capture "categoryId" Int64
         :> Get '[JSON] Category
+  :<|> "categories"
+        :> ReqBody '[JSON] CreateCategoryRequest
+        :> PostCreated '[JSON] Category
 
 apiProxy :: Proxy API
 apiProxy = Proxy

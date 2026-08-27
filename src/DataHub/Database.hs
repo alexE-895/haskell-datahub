@@ -5,17 +5,11 @@ module DataHub.Database
   , DatabasePool
   , checkDatabase
   , createDatabasePool
-  , findCategoryById
-  , listCategories
   , loadDatabaseConfig
   ) where
 
 import Control.Exception (SomeException, try)
-import Data.Int (Int64)
-import Data.Maybe
-  ( fromMaybe
-  , listToMaybe
-  )
+import Data.Maybe (fromMaybe)
 import Data.Pool
   ( Pool
   , defaultPoolConfig
@@ -30,19 +24,10 @@ import Database.PostgreSQL.Simple
   , close
   , connect
   , defaultConnectInfo
-  , query
   , query_
-  )
-import Database.PostgreSQL.Simple.FromRow
-  ( FromRow (fromRow)
-  , field
   )
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
-
-import DataHub.Types
-  ( Category (Category)
-  )
 
 data DatabaseConfig = DatabaseConfig
   { dbHost :: String
@@ -54,20 +39,6 @@ data DatabaseConfig = DatabaseConfig
   deriving (Show)
 
 type DatabasePool = Pool Connection
-
-newtype CategoryRow = CategoryRow
-  { unCategoryRow :: Category
-  }
-
-instance FromRow CategoryRow where
-  fromRow =
-    CategoryRow
-      <$> ( Category
-              <$> field
-              <*> field
-              <*> field
-              <*> field
-          )
 
 loadDatabaseConfig :: IO DatabaseConfig
 loadDatabaseConfig = do
@@ -119,26 +90,3 @@ checkDatabase pool = do
       :: IO (Either SomeException Bool)
 
   pure (either (const False) id result)
-
-listCategories :: DatabasePool -> IO [Category]
-listCategories pool =
-  withResource pool $ \connection -> do
-    rows <-
-      query_
-        connection
-        "SELECT id, name, description, parent_id FROM categories ORDER BY id"
-        :: IO [CategoryRow]
-
-    pure (map unCategoryRow rows)
-
-findCategoryById :: DatabasePool -> Int64 -> IO (Maybe Category)
-findCategoryById pool categoryId =
-  withResource pool $ \connection -> do
-    rows <-
-      query
-        connection
-        "SELECT id, name, description, parent_id FROM categories WHERE id = ?"
-        (Only categoryId)
-        :: IO [CategoryRow]
-
-    pure (unCategoryRow <$> listToMaybe rows)

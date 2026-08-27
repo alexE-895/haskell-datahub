@@ -10,6 +10,7 @@ import Network.Wai.Handler.Warp (run)
 import Servant
   ( Handler
   , Server
+  , err400
   , err404
   , err503
   , serve
@@ -21,11 +22,11 @@ import DataHub.API (API, apiProxy)
 import DataHub.Database
   ( DatabasePool
   , checkDatabase
-  , findCategoryById
-  , listCategories
   )
+import qualified DataHub.Service.Category as CategoryService
 import DataHub.Types
   ( Category
+  , CreateCategoryRequest
   , HealthResponse (HealthResponse)
   , ReadinessResponse (ReadinessResponse)
   )
@@ -51,11 +52,13 @@ readinessHandler databasePool = do
 
 categoriesHandler :: DatabasePool -> Handler [Category]
 categoriesHandler databasePool =
-  liftIO (listCategories databasePool)
+  liftIO (CategoryService.listCategories databasePool)
 
 categoryByIdHandler :: DatabasePool -> Int64 -> Handler Category
 categoryByIdHandler databasePool categoryId = do
-  category <- liftIO (findCategoryById databasePool categoryId)
+  category <-
+    liftIO
+      (CategoryService.findCategoryById databasePool categoryId)
 
   case category of
     Just foundCategory ->
@@ -64,12 +67,35 @@ categoryByIdHandler databasePool categoryId = do
     Nothing ->
       throwError err404
 
+createCategoryHandler
+  :: DatabasePool
+  -> CreateCategoryRequest
+  -> Handler Category
+createCategoryHandler databasePool request = do
+  result <-
+    liftIO
+      (CategoryService.createCategory databasePool request)
+
+  case result of
+    Right category ->
+      pure category
+
+    Left CategoryService.CategoryNameEmpty ->
+      throwError err400
+
+    Left CategoryService.CategoryNameTooLong ->
+      throwError err400
+
+    Left (CategoryService.CategoryParentNotFound _) ->
+      throwError err404
+
 server :: DatabasePool -> Server API
 server databasePool =
        healthHandler
   :<|> readinessHandler databasePool
   :<|> categoriesHandler databasePool
   :<|> categoryByIdHandler databasePool
+  :<|> createCategoryHandler databasePool
 
 runServer :: DatabasePool -> IO ()
 runServer databasePool = do
