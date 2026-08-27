@@ -1,12 +1,30 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DataHub.Types
-  ( HealthResponse (..)
+  ( Category (..)
+  , HealthResponse (..)
   , ReadinessResponse (..)
   ) where
 
 import Data.Aeson (ToJSON (toJSON), object, (.=))
+import Data.Int (Int64)
 import Data.Text (Text)
+
+data Category = Category
+  { categoryId :: Int64
+  , categoryName :: Text
+  , categoryDescription :: Maybe Text
+  , categoryParentId :: Maybe Int64
+  }
+
+instance ToJSON Category where
+  toJSON category =
+    object
+      [ "id" .= categoryId category
+      , "name" .= categoryName category
+      , "description" .= categoryDescription category
+      , "parentId" .= categoryParentId category
+      ]
 
 data HealthResponse = HealthResponse
   { healthStatus :: Text

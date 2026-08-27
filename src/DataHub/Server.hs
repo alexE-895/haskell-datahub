@@ -19,9 +19,11 @@ import DataHub.API (API, apiProxy)
 import DataHub.Database
   ( DatabaseConfig
   , checkDatabase
+  , listCategories
   )
 import DataHub.Types
-  ( HealthResponse (HealthResponse)
+  ( Category
+  , HealthResponse (HealthResponse)
   , ReadinessResponse (ReadinessResponse)
   )
 
@@ -44,10 +46,15 @@ readinessHandler databaseConfig = do
     else
       throwError err503
 
+categoriesHandler :: DatabaseConfig -> Handler [Category]
+categoriesHandler databaseConfig =
+  liftIO (listCategories databaseConfig)
+
 server :: DatabaseConfig -> Server API
 server databaseConfig =
-  healthHandler
-    :<|> readinessHandler databaseConfig
+       healthHandler
+  :<|> readinessHandler databaseConfig
+  :<|> categoriesHandler databaseConfig
 
 runServer :: DatabaseConfig -> IO ()
 runServer databaseConfig = do

@@ -15,13 +15,15 @@ import Servant
   )
 
 import DataHub.Types
-  ( HealthResponse
+  ( Category
+  , HealthResponse
   , ReadinessResponse
   )
 
 type API =
-       "health" :> Get '[JSON] HealthResponse
-  :<|> "ready"  :> Get '[JSON] ReadinessResponse
+       "health"     :> Get '[JSON] HealthResponse
+  :<|> "ready"      :> Get '[JSON] ReadinessResponse
+  :<|> "categories" :> Get '[JSON] [Category]
 
 apiProxy :: Proxy API
 apiProxy = Proxy

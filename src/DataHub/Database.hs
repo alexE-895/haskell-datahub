@@ -2,8 +2,9 @@
 
 module DataHub.Database
   ( DatabaseConfig (..)
-  , loadDatabaseConfig
   , checkDatabase
+  , listCategories
+  , loadDatabaseConfig
   ) where
 
 import Control.Exception (SomeException, bracket, try)
@@ -17,8 +18,16 @@ import Database.PostgreSQL.Simple
   , defaultConnectInfo
   , query_
   )
+import Database.PostgreSQL.Simple.FromRow
+  ( FromRow (fromRow)
+  , field
+  )
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
+
+import DataHub.Types
+  ( Category (Category)
+  )
 
 data DatabaseConfig = DatabaseConfig
   { dbHost :: String
@@ -28,6 +37,20 @@ data DatabaseConfig = DatabaseConfig
   , dbPassword :: String
   }
   deriving (Show)
+
+newtype CategoryRow = CategoryRow
+  { unCategoryRow :: Category
+  }
+
+instance FromRow CategoryRow where
+  fromRow =
+    CategoryRow
+      <$> ( Category
+              <$> field
+              <*> field
+              <*> field
+              <*> field
+          )
 
 loadDatabaseConfig :: IO DatabaseConfig
 loadDatabaseConfig = do
@@ -73,3 +96,18 @@ checkDatabase config = do
       :: IO (Either SomeException Bool)
 
   pure (either (const False) id result)
+
+listCategories :: DatabaseConfig -> IO [Category]
+listCategories config =
+  bracket
+    (connect (toConnectInfo config))
+    close
+    (\connection -> do
+        rows <-
+          query_
+            connection
+            "SELECT id, name, description, parent_id FROM categories ORDER BY id"
+            :: IO [CategoryRow]
+
+        pure (map unCategoryRow rows)
+    )
