@@ -1,8 +1,8 @@
-module Main (main) where
+﻿module Main
+  ( main
+  ) where
 
-import qualified MyLib (someFunc)
+import DataHub.App (runApp)
 
 main :: IO ()
-main = do
-  putStrLn "Hello, Haskell!"
-  MyLib.someFunc
+main = runApp

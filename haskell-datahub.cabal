@@ -60,7 +60,7 @@ library
     import:           warnings
 
     -- Modules exported by the library.
-    exposed-modules:  MyLib
+    exposed-modules:  DataHub.App
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -127,3 +127,4 @@ test-suite haskell-datahub-test
     build-depends:
         base ^>=4.20.2.0,
         haskell-datahub
+
