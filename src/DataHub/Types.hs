@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DataHub.Types
-  ( Category (..)
+  ( ApiError (..)
+  , Category (..)
   , CreateCategoryRequest (..)
   , HealthResponse (..)
   , NewCategory (..)
@@ -11,6 +12,7 @@ module DataHub.Types
 import Data.Aeson
   ( FromJSON (parseJSON)
   , ToJSON (toJSON)
+  , Value
   , object
   , withObject
   , (.:)
@@ -55,6 +57,20 @@ data NewCategory = NewCategory
   , newCategoryDescription :: Maybe Text
   , newCategoryParentId :: Maybe Int64
   }
+
+data ApiError = ApiError
+  { apiErrorCode :: Text
+  , apiErrorMessage :: Text
+  , apiErrorDetails :: Maybe Value
+  }
+
+instance ToJSON ApiError where
+  toJSON apiError =
+    object
+      [ "code" .= apiErrorCode apiError
+      , "message" .= apiErrorMessage apiError
+      , "details" .= apiErrorDetails apiError
+      ]
 
 data HealthResponse = HealthResponse
   { healthStatus :: Text
