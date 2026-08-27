@@ -1,6 +1,8 @@
-﻿module DataHub.App
+module DataHub.App
   ( runApp
   ) where
 
+import DataHub.Server (runServer)
+
 runApp :: IO ()
-runApp = putStrLn "Haskell DataHub starting..."
+runApp = runServer

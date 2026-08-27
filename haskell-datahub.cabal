@@ -60,7 +60,11 @@ library
     import:           warnings
 
     -- Modules exported by the library.
-    exposed-modules:  DataHub.App
+    exposed-modules:
+        DataHub.App
+        DataHub.API
+        DataHub.Server
+        DataHub.Types
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -69,7 +73,14 @@ library
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.20.2.0
+    build-depends:
+        base ^>=4.20.2.0,
+        aeson,
+        servant,
+        servant-server,
+        text,
+        wai,
+        warp
 
     -- Directories containing source files.
     hs-source-dirs:   src
