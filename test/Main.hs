@@ -73,6 +73,21 @@ import DataHub.Analytics.Types
 import DataHub.Analytics.Worker
   ( runAnalyticsWorkerOnce
   )
+import DataHub.External.GitHub
+  ( GitHubConfig (GitHubConfig)
+  , createGitHubClient
+  )
+import DataHub.Sync.Types
+  ( SyncJob (..)
+  )
+import DataHub.Sync.Worker
+  ( runSyncWorkerOnce
+  )
+import qualified Data.ByteString.Lazy.Char8 as LazyByteString
+import qualified Network.Wai as Wai
+import Network.Wai.Handler.Warp
+  ( testWithApplication
+  )
 import DataHub.Database
   ( DatabasePool
   , createDatabasePool
@@ -176,6 +191,7 @@ main = do
     itemSpec (application databasePool clickHouse)
 
     analyticsSpec databasePool clickHouse (application databasePool clickHouse)
+    syncSpec databasePool (application databasePool clickHouse)
 spec :: Application -> Spec
 spec app = do
   describe "health/readiness" $ do
@@ -959,5 +975,270 @@ decodeItemSourceStats response =
     Left decodeFailure ->
       error
         ( "Failed to decode ItemSourceStat response: "
+            ++ decodeFailure
+        )
+syncSpec
+  :: DatabasePool
+  -> Application
+  -> Spec
+syncSpec databasePool app =
+  describe "external sync API" $ do
+
+    it "imports GitHub repositories through a local mock API" $ do
+
+      category <-
+        createCategory
+          app
+          "MockGitHubCategory"
+          Nothing
+          Nothing
+
+      createResponse <-
+        postJson
+          app
+          "/sync/github"
+          ( object
+              [ "query" .= ("language:haskell" :: Text)
+              , "categoryId" .= responseCategoryId category
+              , "maxItems" .= (2 :: Int)
+              ]
+          )
+
+      simpleStatus createResponse
+        `shouldBe` status201
+
+      createdJob <-
+        decodeSyncJob createResponse
+
+      syncJobStatus createdJob
+        `shouldBe` "pending"
+
+      syncJobResultCount createdJob
+        `shouldBe` 0
+
+      testWithApplication
+        (pure mockGitHubApplication)
+        $ \port -> do
+
+          gitHub <-
+            createGitHubClient
+              ( GitHubConfig
+                  ( "http://127.0.0.1:"
+                      ++ show port
+                  )
+                  "2026-03-10"
+                  Nothing
+              )
+
+          claimed <-
+            runSyncWorkerOnce
+              databasePool
+              gitHub
+
+          claimed
+            `shouldBe` 1
+
+      jobResponse <-
+        getRequest
+          app
+          ( "/sync/jobs/"
+              ++ show (syncJobId createdJob)
+          )
+
+      simpleStatus jobResponse
+        `shouldBe` status200
+
+      completedJob <-
+        decodeSyncJob jobResponse
+
+      syncJobStatus completedJob
+        `shouldBe` "completed"
+
+      syncJobAttempts completedJob
+        `shouldBe` 0
+
+      syncJobResultCount completedJob
+        `shouldBe` 2
+
+      itemsResponse <-
+        getRequestWithQuery
+          app
+          "/items"
+          [ ("source", Just "github")
+          , ("limit", Just "100")
+          ]
+
+      simpleStatus itemsResponse
+        `shouldBe` status200
+
+      itemList <-
+        decodeItemList itemsResponse
+
+      let names =
+            map
+              testItemName
+              (testListItems itemList)
+
+      ("mock-owner/mock-repo-a" `elem` names)
+        `shouldBe` True
+
+      ("mock-owner/mock-repo-b" `elem` names)
+        `shouldBe` True
+
+    it "validates sync REST requests" $ do
+
+      category <-
+        createCategory
+          app
+          "SyncValidationCategory"
+          Nothing
+          Nothing
+
+      emptyQueryResponse <-
+        postJson
+          app
+          "/sync/github"
+          ( object
+              [ "query" .= ("   " :: Text)
+              , "categoryId" .= responseCategoryId category
+              , "maxItems" .= (2 :: Int)
+              ]
+          )
+
+      simpleStatus emptyQueryResponse
+        `shouldBe` status400
+
+      emptyQueryError <-
+        decodeError emptyQueryResponse
+
+      responseErrorCode emptyQueryError
+        `shouldBe` "SYNC_QUERY_EMPTY"
+
+      invalidLimitResponse <-
+        postJson
+          app
+          "/sync/github"
+          ( object
+              [ "query" .= ("haskell" :: Text)
+              , "categoryId" .= responseCategoryId category
+              , "maxItems" .= (101 :: Int)
+              ]
+          )
+
+      simpleStatus invalidLimitResponse
+        `shouldBe` status400
+
+      invalidLimitError <-
+        decodeError invalidLimitResponse
+
+      responseErrorCode invalidLimitError
+        `shouldBe` "SYNC_MAX_ITEMS_INVALID"
+
+      missingCategoryResponse <-
+        postJson
+          app
+          "/sync/github"
+          ( object
+              [ "query" .= ("haskell" :: Text)
+              , "categoryId" .= (999999 :: Int64)
+              , "maxItems" .= (2 :: Int)
+              ]
+          )
+
+      simpleStatus missingCategoryResponse
+        `shouldBe` status404
+
+      missingCategoryError <-
+        decodeError missingCategoryResponse
+
+      responseErrorCode missingCategoryError
+        `shouldBe` "SYNC_CATEGORY_NOT_FOUND"
+
+    it "marks a sync job failed when the external API is unavailable" $ do
+
+      category <-
+        createCategory
+          app
+          "SyncFailureCategory"
+          Nothing
+          Nothing
+
+      createResponse <-
+        postJson
+          app
+          "/sync/github"
+          ( object
+              [ "query" .= ("mock-failure" :: Text)
+              , "categoryId" .= responseCategoryId category
+              , "maxItems" .= (1 :: Int)
+              ]
+          )
+
+      simpleStatus createResponse
+        `shouldBe` status201
+
+      createdJob <-
+        decodeSyncJob createResponse
+
+      unavailableGitHub <-
+        createGitHubClient
+          ( GitHubConfig
+              "http://127.0.0.1:65533"
+              "2026-03-10"
+              Nothing
+          )
+
+      claimed <-
+        runSyncWorkerOnce
+          databasePool
+          unavailableGitHub
+
+      claimed
+        `shouldBe` 1
+
+      jobResponse <-
+        getRequest
+          app
+          ( "/sync/jobs/"
+              ++ show (syncJobId createdJob)
+          )
+
+      simpleStatus jobResponse
+        `shouldBe` status200
+
+      failedJob <-
+        decodeSyncJob jobResponse
+
+      syncJobStatus failedJob
+        `shouldBe` "failed"
+
+      syncJobAttempts failedJob
+        `shouldBe` 1
+
+      (syncJobLastError failedJob == Nothing)
+        `shouldBe` False
+
+mockGitHubApplication :: Application
+mockGitHubApplication _ respond =
+  respond
+    ( Wai.responseLBS
+        status200
+        [ ("Content-Type", "application/json") ]
+        ( LazyByteString.pack
+            "{\"total_count\":2,\"incomplete_results\":false,\"items\":[{\"id\":900001,\"full_name\":\"mock-owner/mock-repo-a\",\"description\":\"Mock repository A\",\"html_url\":\"https://example.invalid/mock-a\",\"stargazers_count\":12345,\"language\":\"Haskell\"},{\"id\":900002,\"full_name\":\"mock-owner/mock-repo-b\",\"description\":\"Mock repository B\",\"html_url\":\"https://example.invalid/mock-b\",\"stargazers_count\":6789,\"language\":\"Haskell\"}]}"
+        )
+    )
+
+decodeSyncJob
+  :: SResponse
+  -> IO SyncJob
+decodeSyncJob response =
+  case eitherDecode (simpleBody response) of
+    Right job ->
+      pure job
+
+    Left decodeFailure ->
+      error
+        ( "Failed to decode SyncJob response: "
             ++ decodeFailure
         )

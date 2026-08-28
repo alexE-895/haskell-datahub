@@ -59,6 +59,11 @@ import DataHub.Item.Types
   )
 import qualified DataHub.Service.Category as CategoryService
 import qualified DataHub.Service.Item as ItemService
+import qualified DataHub.Sync.Service as SyncService
+import DataHub.Sync.Types
+  ( CreateGitHubSyncRequest
+  , SyncJob
+  )
 import DataHub.Types
   ( ApiError (ApiError)
   , Category
@@ -455,6 +460,77 @@ handleItemError serviceError =
         "Offset must be zero or greater"
         Nothing
 
+createGitHubSyncHandler
+  :: DatabasePool
+  -> CreateGitHubSyncRequest
+  -> Handler SyncJob
+createGitHubSyncHandler databasePool request = do
+  result <-
+    liftIO
+      ( SyncService.createGitHubSyncJob
+          databasePool
+          request
+      )
+
+  case result of
+    Right job ->
+      pure job
+
+    Left serviceError ->
+      handleSyncError serviceError
+
+syncJobByIdHandler
+  :: DatabasePool
+  -> Int64
+  -> Handler SyncJob
+syncJobByIdHandler databasePool jobId = do
+  result <-
+    liftIO
+      ( SyncService.findSyncJobById
+          databasePool
+          jobId
+      )
+
+  case result of
+    Right job ->
+      pure job
+
+    Left serviceError ->
+      handleSyncError serviceError
+
+handleSyncError
+  :: SyncService.SyncServiceError
+  -> Handler a
+handleSyncError serviceError =
+  case serviceError of
+
+    SyncService.SyncQueryEmpty ->
+      throwApiError
+        err400
+        "SYNC_QUERY_EMPTY"
+        "Sync query must not be empty"
+        Nothing
+
+    SyncService.SyncMaxItemsInvalid ->
+      throwApiError
+        err400
+        "SYNC_MAX_ITEMS_INVALID"
+        "maxItems must be between 1 and 100"
+        Nothing
+
+    SyncService.SyncCategoryNotFound categoryId ->
+      throwApiError
+        err404
+        "SYNC_CATEGORY_NOT_FOUND"
+        "Sync target category does not exist"
+        (Just (object ["categoryId" .= categoryId]))
+
+    SyncService.SyncJobNotFound jobId ->
+      throwApiError
+        err404
+        "SYNC_JOB_NOT_FOUND"
+        "Sync job does not exist"
+        (Just (object ["jobId" .= jobId]))
 analyticsEventSummaryHandler
   :: ClickHouseClient
   -> Handler [EventSummary]
@@ -517,6 +593,9 @@ server databasePool clickHouse =
   :<|> updateItemHandler databasePool
   :<|> deleteItemHandler databasePool
 
+  :<|> createGitHubSyncHandler databasePool
+  :<|> syncJobByIdHandler databasePool
+
   :<|> analyticsEventSummaryHandler clickHouse
   :<|> analyticsItemsBySourceHandler clickHouse
 
@@ -535,7 +614,8 @@ runServer
   -> ClickHouseClient
   -> IO ()
 runServer databasePool clickHouse = do
-  putStrLn "Haskell DataHub listening on http://127.0.0.1:8080"
+  putStrLn
+    "Haskell DataHub listening on http://127.0.0.1:8080"
 
   run
     8080

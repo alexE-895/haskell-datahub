@@ -11,11 +11,15 @@ import DataHub.App
   , runApp
   , runClickHouseMigrationsApp
   , runMigrationsApp
+  , runSyncWorkerForeverApp
+  , runSyncWorkerOnceApp
   )
 
 main :: IO ()
 main = do
-  arguments <- getArgs
+
+  arguments <-
+    getArgs
 
   case arguments of
     [] ->
@@ -36,6 +40,12 @@ main = do
     ["analytics-worker"] ->
       runAnalyticsWorkerForeverApp
 
+    ["sync-flush"] ->
+      runSyncWorkerOnceApp
+
+    ["sync-worker"] ->
+      runSyncWorkerForeverApp
+
     _ ->
       die
-        "Usage: haskell-datahub [serve|migrate|clickhouse-migrate|analytics-flush|analytics-worker]"
+        "Usage: haskell-datahub [serve|migrate|clickhouse-migrate|analytics-flush|analytics-worker|sync-flush|sync-worker]"

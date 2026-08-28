@@ -1,6 +1,10 @@
-﻿dist-newstyle/
+dist-newstyle/
 *.o
 *.hi
 *.exe
 .ghc.environment.*
 .env
+*.bak
+*.before_*.ps1
+*.before_*.yaml
+*.before_*.yml

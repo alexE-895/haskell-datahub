@@ -71,6 +71,11 @@ library
         DataHub.Item.Types
         DataHub.API
         DataHub.Analytics.ClickHouse
+        DataHub.Sync.Worker
+        DataHub.Sync.Service
+        DataHub.Sync.Repository
+        DataHub.Sync.Types
+        DataHub.External.GitHub
         DataHub.Analytics.Worker
         DataHub.Analytics.Outbox
         DataHub.Analytics.Types
@@ -85,6 +90,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
+        http-client-tls,
         time,
         http-types,
         bytestring,
@@ -139,6 +145,7 @@ test-suite haskell-datahub-test
     main-is: Main.hs
     default-language: GHC2024
     build-depends:
+        warp,
         aeson,
         base ^>=4.20.2.0,
         bytestring,

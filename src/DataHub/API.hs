@@ -32,6 +32,10 @@ import DataHub.Item.Types
   , ItemListResponse
   , UpdateItemRequest
   )
+import DataHub.Sync.Types
+  ( CreateGitHubSyncRequest
+  , SyncJob
+  )
 import DataHub.Types
   ( Category
   , CreateCategoryRequest
@@ -41,8 +45,11 @@ import DataHub.Types
   )
 
 type API =
-       "health" :> Get '[JSON] HealthResponse
-  :<|> "ready" :> Get '[JSON] ReadinessResponse
+       "health"
+        :> Get '[JSON] HealthResponse
+
+  :<|> "ready"
+        :> Get '[JSON] ReadinessResponse
 
   :<|> "categories"
         :> Get '[JSON] [Category]
@@ -88,6 +95,16 @@ type API =
   :<|> "items"
         :> Capture "itemId" Int64
         :> DeleteNoContent
+
+  :<|> "sync"
+        :> "github"
+        :> ReqBody '[JSON] CreateGitHubSyncRequest
+        :> PostCreated '[JSON] SyncJob
+
+  :<|> "sync"
+        :> "jobs"
+        :> Capture "jobId" Int64
+        :> Get '[JSON] SyncJob
 
   :<|> "analytics"
         :> "events"
