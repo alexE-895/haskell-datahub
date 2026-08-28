@@ -8,3 +8,4 @@ dist-newstyle/
 *.before_*.ps1
 *.before_*.yaml
 *.before_*.yml
+.manual-storage-test/

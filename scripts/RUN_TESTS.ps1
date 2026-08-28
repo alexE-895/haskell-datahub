@@ -1,3 +1,64 @@
+
+
+# === STORAGE TEST INFRA BEGIN ===
+
+$StorageProjectRoot =
+    "C:\Users\Alex\Desktop\HASKELL\PROJECTS\haskell-datahub"
+
+$StorageBaseCompose =
+    Join-Path $StorageProjectRoot "compose.yaml"
+
+$StorageOverlayCompose =
+    Join-Path $StorageProjectRoot "compose.storage.yaml"
+
+Write-Host ""
+Write-Host "=== START MINIO TEST INFRA ==="
+
+& docker compose `
+    -f $StorageBaseCompose `
+    -f $StorageOverlayCompose `
+    up -d minio
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start MinIO"
+}
+
+Write-Host "Waiting for MinIO..."
+
+$MinioReady = $false
+
+for ($i = 0; $i -lt 60; $i++) {
+
+    & cmd.exe /d /c `
+        "curl.exe -fsS http://127.0.0.1:9100/minio/health/live >nul 2>nul"
+
+    $CurlExitCode = $LASTEXITCODE
+
+    if ($CurlExitCode -eq 0) {
+        $MinioReady = $true
+        break
+    }
+
+    Start-Sleep -Seconds 1
+}
+
+if (-not $MinioReady) {
+    throw "MinIO did not become ready within 60 seconds"
+}
+
+Write-Host "MinIO: READY"
+
+# Separate bucket for automated tests.
+$env:S3_HOST = "127.0.0.1"
+$env:S3_PORT = "9100"
+$env:S3_SECURE = "false"
+$env:S3_ACCESS_KEY = "datahub"
+$env:S3_SECRET_KEY = "datahub_minio_dev_password"
+$env:S3_BUCKET = "datahub-files-test"
+
+Write-Host "S3 test bucket: $env:S3_BUCKET"
+
+# === STORAGE TEST INFRA END ===
 $ErrorActionPreference = "Continue"
 
 $ProjectRoot = "C:\Users\Alex\Desktop\HASKELL\PROJECTS\haskell-datahub"
@@ -436,7 +497,10 @@ WHERE processed_at IS NULL;
     Write-Host "Analytics worker              : PASS"
     Write-Host "Analytics API                 : PASS"
     Write-Host "Analytics degradation         : PASS"
-    Write-Host "Event replay idempotency      : PASS"
+    Write-Host "Event replay idempotency      : PASS
+MinIO object storage          : PASS
+Storage API                   : PASS
+File lifecycle                : PASS"
     Write-Host "============================================================"
 }
 finally {

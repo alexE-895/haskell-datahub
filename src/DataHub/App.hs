@@ -6,6 +6,8 @@ module DataHub.App
   , runMigrationsApp
   , runSyncWorkerForeverApp
   , runSyncWorkerOnceApp
+  , runStorageInitApp
+  , runStorageSmokeApp
   ) where
 
 import Control.Monad (unless)
@@ -37,6 +39,12 @@ import DataHub.Migrations
   )
 import DataHub.Server
   ( runServer
+  )
+import DataHub.Storage.Minio
+  ( createStorageClient
+  , ensureStorageBucket
+  , loadStorageConfig
+  , runStorageSmoke
   )
 import DataHub.Sync.Worker
   ( runSyncWorkerForever
@@ -70,10 +78,21 @@ runApp = do
   putStrLn
     "ClickHouse analytics client: configured"
 
+  storageConfig <-
+    loadStorageConfig
+
+  let storageClient =
+        createStorageClient storageConfig
+
+  ensureStorageBucket storageClient
+
+  putStrLn
+    "S3-compatible object storage: ready"
+
   runServer
     databasePool
     clickHouse
-
+    storageClient
 runMigrationsApp :: IO ()
 runMigrationsApp = do
 
@@ -168,6 +187,21 @@ runSyncWorkerForeverApp = do
     databasePool
     gitHub
 
+
+runStorageInitApp :: IO ()
+runStorageInitApp = do
+
+  storageConfig <-
+    loadStorageConfig
+
+  let storageClient =
+        createStorageClient storageConfig
+
+  ensureStorageBucket storageClient
+
+runStorageSmokeApp :: IO ()
+runStorageSmokeApp =
+  runStorageSmoke
 loadAnalyticsDependencies
   :: IO (DatabasePool, ClickHouseClient)
 loadAnalyticsDependencies = do

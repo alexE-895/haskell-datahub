@@ -73,7 +73,11 @@ library
         DataHub.Observability.RequestLog
         DataHub.Observability.Metrics
         DataHub.Analytics.ClickHouse
-        DataHub.Sync.Worker
+        DataHub.Sync.Worker
+        DataHub.Storage.Minio
+        DataHub.Storage.Service
+        DataHub.Storage.Repository
+        DataHub.Storage.Types
         DataHub.Sync.Service
         DataHub.Sync.Repository
         DataHub.Sync.Types
@@ -92,6 +96,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
+        minio-hs,
         wai-middleware-prometheus,
         http-client-tls,
         time,

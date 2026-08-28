@@ -16,14 +16,19 @@ import Data.Aeson
   , object
   , (.=)
   )
+import qualified Data.ByteString.Lazy as LazyByteString
 import Data.Int (Int64)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Network.Wai (Application)
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Context (..)
   , ErrorFormatters (..)
-  , Handler
+  , Handler
+  , Headers
+  , Header
+  , addHeader
   , NoContent (NoContent)
   , Server
   , ServerError (..)
@@ -31,7 +36,9 @@ import Servant
   , err400
   , err404
   , err409
+  , err413
   , err503
+  , err500
   , serveWithContext
   , throwError
   , (:<|>) (..)
@@ -65,6 +72,15 @@ import DataHub.Item.Types
   )
 import qualified DataHub.Service.Category as CategoryService
 import qualified DataHub.Service.Item as ItemService
+import DataHub.Storage.Minio
+  ( StorageClient
+  )
+
+import qualified DataHub.Storage.Service as StorageService
+
+import DataHub.Storage.Types
+  ( StoredFile (..)
+  )
 import qualified DataHub.Sync.Service as SyncService
 import DataHub.Sync.Types
   ( CreateGitHubSyncRequest
@@ -537,6 +553,203 @@ handleSyncError serviceError =
         "SYNC_JOB_NOT_FOUND"
         "Sync job does not exist"
         (Just (object ["jobId" .= jobId]))
+createStoredFileHandler
+  :: DatabasePool
+  -> StorageClient
+  -> Maybe Int64
+  -> Maybe Text
+  -> Maybe Text
+  -> LazyByteString.ByteString
+  -> Handler StoredFile
+createStoredFileHandler
+  databasePool
+  storage
+  itemId
+  fileName
+  contentType
+  bytes = do
+
+  result <-
+    liftIO
+      ( StorageService.uploadStoredFile
+          databasePool
+          storage
+          itemId
+          fileName
+          contentType
+          bytes
+      )
+
+  case result of
+    Right storedFile ->
+      pure storedFile
+
+    Left serviceError ->
+      handleStorageError serviceError
+
+
+storedFileByIdHandler
+  :: DatabasePool
+  -> Int64
+  -> Handler StoredFile
+storedFileByIdHandler databasePool fileId = do
+
+  result <-
+    liftIO
+      ( StorageService.findStoredFile
+          databasePool
+          fileId
+      )
+
+  case result of
+    Right storedFile ->
+      pure storedFile
+
+    Left serviceError ->
+      handleStorageError serviceError
+
+
+downloadStoredFileHandler
+  :: DatabasePool
+  -> StorageClient
+  -> Int64
+  -> Handler
+       ( Headers
+           '[ Header "Content-Disposition" Text
+            , Header "X-Original-Content-Type" Text
+            ]
+           LazyByteString.ByteString
+       )
+downloadStoredFileHandler
+  databasePool
+  storage
+  fileId = do
+
+  result <-
+    liftIO
+      ( StorageService.downloadStoredFile
+          databasePool
+          storage
+          fileId
+      )
+
+  case result of
+
+    Left serviceError ->
+      handleStorageError serviceError
+
+    Right (metadata, bytes) -> do
+
+      let safeName =
+            Text.replace
+              "\""
+              "_"
+              (storedFileOriginalName metadata)
+
+          disposition =
+            "attachment; filename=\""
+              <> safeName
+              <> "\""
+
+      pure
+        ( addHeader
+            disposition
+            ( addHeader
+                (storedFileContentType metadata)
+                bytes
+            )
+        )
+
+
+deleteStoredFileHandler
+  :: DatabasePool
+  -> StorageClient
+  -> Int64
+  -> Handler NoContent
+deleteStoredFileHandler
+  databasePool
+  storage
+  fileId = do
+
+  result <-
+    liftIO
+      ( StorageService.deleteStoredFile
+          databasePool
+          storage
+          fileId
+      )
+
+  case result of
+
+    Right () ->
+      pure NoContent
+
+    Left serviceError ->
+      handleStorageError serviceError
+
+
+handleStorageError
+  :: StorageService.StorageServiceError
+  -> Handler a
+handleStorageError serviceError =
+  case serviceError of
+
+    StorageService.StorageFileNameRequired ->
+      throwApiError
+        err400
+        "FILE_NAME_REQUIRED"
+        "X-File-Name header is required"
+        Nothing
+
+    StorageService.StorageFileNameTooLong ->
+      throwApiError
+        err400
+        "FILE_NAME_TOO_LONG"
+        "File name is too long"
+        Nothing
+
+    StorageService.StorageFileTooLarge ->
+      throwApiError
+        err413
+        "FILE_TOO_LARGE"
+        "Maximum file size is 10 MB"
+        Nothing
+
+    StorageService.StorageItemNotFound itemId ->
+      throwApiError
+        err404
+        "FILE_ITEM_NOT_FOUND"
+        "Referenced item does not exist"
+        (Just (object ["itemId" .= itemId]))
+
+    StorageService.StorageFileNotFound fileId ->
+      throwApiError
+        err404
+        "FILE_NOT_FOUND"
+        "Stored file does not exist"
+        (Just (object ["fileId" .= fileId]))
+
+    StorageService.StorageFileNotReady status ->
+      throwApiError
+        err409
+        "FILE_NOT_READY"
+        "Stored file is not ready for this operation"
+        (Just (object ["status" .= status]))
+
+    StorageService.StorageUnavailable ->
+      throwApiError
+        err503
+        "STORAGE_UNAVAILABLE"
+        "Object storage is unavailable"
+        Nothing
+
+    StorageService.StoragePersistenceFailure ->
+      throwApiError
+        err500
+        "STORAGE_PERSISTENCE_FAILURE"
+        "Object storage metadata could not be finalized"
+        Nothing
+
 analyticsEventSummaryHandler
   :: ClickHouseClient
   -> Handler [EventSummary]
@@ -582,8 +795,9 @@ analyticsItemsBySourceHandler clickHouse = do
 server
   :: DatabasePool
   -> ClickHouseClient
+  -> StorageClient
   -> Server API
-server databasePool clickHouse =
+server databasePool clickHouse storage =
        healthHandler
   :<|> readinessHandler databasePool
 
@@ -602,24 +816,47 @@ server databasePool clickHouse =
   :<|> createGitHubSyncHandler databasePool
   :<|> syncJobByIdHandler databasePool
 
-  :<|> analyticsEventSummaryHandler clickHouse
-  :<|> analyticsItemsBySourceHandler clickHouse
+  :<|> createStoredFileHandler
+         databasePool
+         storage
+
+  :<|> storedFileByIdHandler
+         databasePool
+
+  :<|> downloadStoredFileHandler
+         databasePool
+         storage
+
+  :<|> deleteStoredFileHandler
+         databasePool
+         storage
+
+  :<|> analyticsEventSummaryHandler
+         clickHouse
+
+  :<|> analyticsItemsBySourceHandler
+         clickHouse
+
 
 application
   :: DatabasePool
   -> ClickHouseClient
+  -> StorageClient
   -> Application
-application databasePool clickHouse =
+application databasePool clickHouse storage =
   serveWithContext
     apiProxy
     (customErrorFormatters :. EmptyContext)
-    (server databasePool clickHouse)
+    (server databasePool clickHouse storage)
+
 
 runServer
   :: DatabasePool
   -> ClickHouseClient
+  -> StorageClient
   -> IO ()
-runServer databasePool clickHouse = do
+runServer databasePool clickHouse storage = do
+
   putStrLn
     "Haskell DataHub listening on http://127.0.0.1:8080"
 
@@ -627,6 +864,10 @@ runServer databasePool clickHouse = do
     8080
     ( metricsMiddleware
         ( requestObservabilityMiddleware
-            (application databasePool clickHouse)
+            ( application
+                databasePool
+                clickHouse
+                storage
+            )
         )
     )

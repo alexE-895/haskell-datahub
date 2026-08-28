@@ -6,13 +6,17 @@ module DataHub.API
   , apiProxy
   ) where
 
+import qualified Data.ByteString.Lazy as LazyByteString
 import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Servant
   ( Capture
   , DeleteNoContent
-  , Get
+  , Get
+  , OctetStream
+  , Headers
+  , Header
   , JSON
   , Patch
   , PostCreated
@@ -31,6 +35,9 @@ import DataHub.Item.Types
   , Item
   , ItemListResponse
   , UpdateItemRequest
+  )
+import DataHub.Storage.Types
+  ( StoredFile
   )
 import DataHub.Sync.Types
   ( CreateGitHubSyncRequest
@@ -105,6 +112,33 @@ type API =
         :> "jobs"
         :> Capture "jobId" Int64
         :> Get '[JSON] SyncJob
+
+  :<|> "files"
+        :> QueryParam "itemId" Int64
+        :> Header "X-File-Name" Text
+        :> Header "X-Content-Type" Text
+        :> ReqBody '[OctetStream] LazyByteString.ByteString
+        :> PostCreated '[JSON] StoredFile
+
+  :<|> "files"
+        :> Capture "fileId" Int64
+        :> Get '[JSON] StoredFile
+
+  :<|> "files"
+        :> Capture "fileId" Int64
+        :> "download"
+        :> Get
+             '[OctetStream]
+             ( Headers
+                 '[ Header "Content-Disposition" Text
+                  , Header "X-Original-Content-Type" Text
+                  ]
+                 LazyByteString.ByteString
+             )
+
+  :<|> "files"
+        :> Capture "fileId" Int64
+        :> DeleteNoContent
 
   :<|> "analytics"
         :> "events"

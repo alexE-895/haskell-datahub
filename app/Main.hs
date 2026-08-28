@@ -13,6 +13,8 @@ import DataHub.App
   , runMigrationsApp
   , runSyncWorkerForeverApp
   , runSyncWorkerOnceApp
+  , runStorageInitApp
+  , runStorageSmokeApp
   )
 
 main :: IO ()
@@ -46,6 +48,11 @@ main = do
     ["sync-worker"] ->
       runSyncWorkerForeverApp
 
+    ["storage-init"] ->
+      runStorageInitApp
+
+    ["storage-smoke"] ->
+      runStorageSmokeApp
     _ ->
       die
-        "Usage: haskell-datahub [serve|migrate|clickhouse-migrate|analytics-flush|analytics-worker|sync-flush|sync-worker]"
+        "Usage: haskell-datahub [serve|migrate|clickhouse-migrate|analytics-flush|analytics-worker|sync-flush|sync-worker|storage-init|storage-smoke]"

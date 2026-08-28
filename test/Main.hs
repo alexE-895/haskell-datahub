@@ -93,6 +93,12 @@ import DataHub.Database
   , createDatabasePool
   , loadDatabaseConfig
   )
+import DataHub.Storage.Minio
+  ( StorageClient
+  , createStorageClient
+  , ensureStorageBucket
+  , loadStorageConfig
+  )
 import DataHub.Server (application)
 
 data CategoryResponse = CategoryResponse
@@ -186,12 +192,26 @@ main = do
   clickHouseConfig <- loadClickHouseConfig
   clickHouse <- createClickHouseClient clickHouseConfig
 
-  hspec $ do
-    spec (application databasePool clickHouse)
-    itemSpec (application databasePool clickHouse)
+  storageConfig <-
 
-    analyticsSpec databasePool clickHouse (application databasePool clickHouse)
-    syncSpec databasePool (application databasePool clickHouse)
+    loadStorageConfig
+
+
+  let storageClient =
+
+        createStorageClient storageConfig
+
+
+  ensureStorageBucket storageClient
+
+
+  hspec $ do
+    spec (application databasePool clickHouse storageClient)
+    itemSpec (application databasePool clickHouse storageClient)
+
+    analyticsSpec databasePool clickHouse storageClient (application databasePool clickHouse storageClient)
+    syncSpec databasePool (application databasePool clickHouse storageClient)
+    storageSpec databasePool storageClient (application databasePool clickHouse storageClient)
 spec :: Application -> Spec
 spec app = do
   describe "health/readiness" $ do
@@ -839,12 +859,201 @@ decodeItemList response =
     Left decodeFailure ->
       error
         ("Failed to decode ItemList response: " ++ decodeFailure)
+
+data StoredFileTestResponse = StoredFileTestResponse
+  { storedFileTestId :: Int64
+  , storedFileTestStatus :: Text
+  }
+  deriving (Eq, Show)
+
+instance FromJSON StoredFileTestResponse where
+  parseJSON =
+    withObject "StoredFileTestResponse" $ \objectValue ->
+      StoredFileTestResponse
+        <$> objectValue .: "id"
+        <*> objectValue .: "status"
+
+
+decodeStoredFile
+  :: SResponse
+  -> IO StoredFileTestResponse
+decodeStoredFile response =
+  case eitherDecode (simpleBody response) of
+
+    Right storedFile ->
+      pure storedFile
+
+    Left decodeFailure ->
+      error
+        ( "Failed to decode StoredFile response: "
+            ++ decodeFailure
+        )
+
+
+storageSpec
+  :: DatabasePool
+  -> StorageClient
+  -> Application
+  -> Spec
+storageSpec _databasePool _storageClient app =
+  describe "Storage API" $ do
+
+    it "uploads and downloads exactly the same bytes" $ do
+
+      let payload =
+            "haskell-datahub-storage-integration-test"
+
+          uploadRequest =
+            SRequest
+              ( (setPath defaultRequest (ByteString.pack "/files"))
+                  { requestMethod = methodPost
+                  , requestHeaders =
+                      [ (hContentType, "application/octet-stream")
+                      , ("X-File-Name", "integration-test.txt")
+                      , ("X-Content-Type", "text/plain")
+                      ]
+                  }
+              )
+              payload
+
+      uploadResponse <-
+        runSession
+          (srequest uploadRequest)
+          app
+
+      simpleStatus uploadResponse
+        `shouldBe` status201
+
+      uploaded <-
+        decodeStoredFile uploadResponse
+
+      storedFileTestStatus uploaded
+        `shouldBe` "ready"
+
+      let fileId =
+            storedFileTestId uploaded
+
+          filePath =
+            "/files/" ++ show fileId
+
+          downloadPath =
+            filePath ++ "/download"
+
+      downloadResponse <-
+        getRequest
+          app
+          downloadPath
+
+      simpleStatus downloadResponse
+        `shouldBe` status200
+
+      simpleBody downloadResponse
+        `shouldBe` payload
+
+      cleanupResponse <-
+        deleteRequest
+          app
+          filePath
+
+      simpleStatus cleanupResponse
+        `shouldBe` status204
+
+
+    it "rejects upload without X-File-Name" $ do
+
+      let invalidRequest =
+            SRequest
+              ( (setPath defaultRequest (ByteString.pack "/files"))
+                  { requestMethod = methodPost
+                  , requestHeaders =
+                      [ (hContentType, "application/octet-stream")
+                      ]
+                  }
+              )
+              "invalid-upload"
+
+      response <-
+        runSession
+          (srequest invalidRequest)
+          app
+
+      simpleStatus response
+        `shouldBe` status400
+
+      apiError <-
+        decodeError response
+
+      responseErrorCode apiError
+        `shouldBe` "FILE_NAME_REQUIRED"
+
+
+    it "deletes a stored file and hides it from the API" $ do
+
+      let payload =
+            "delete-me"
+
+          uploadRequest =
+            SRequest
+              ( (setPath defaultRequest (ByteString.pack "/files"))
+                  { requestMethod = methodPost
+                  , requestHeaders =
+                      [ (hContentType, "application/octet-stream")
+                      , ("X-File-Name", "delete-test.txt")
+                      , ("X-Content-Type", "text/plain")
+                      ]
+                  }
+              )
+              payload
+
+      uploadResponse <-
+        runSession
+          (srequest uploadRequest)
+          app
+
+      simpleStatus uploadResponse
+        `shouldBe` status201
+
+      uploaded <-
+        decodeStoredFile uploadResponse
+
+      storedFileTestStatus uploaded
+        `shouldBe` "ready"
+
+      let fileId =
+            storedFileTestId uploaded
+
+          filePath =
+            "/files/" ++ show fileId
+
+      deleteResponse <-
+        deleteRequest
+          app
+          filePath
+
+      simpleStatus deleteResponse
+        `shouldBe` status204
+
+      afterDelete <-
+        getRequest
+          app
+          filePath
+
+      simpleStatus afterDelete
+        `shouldBe` status404
+
+      apiError <-
+        decodeError afterDelete
+
+      responseErrorCode apiError
+        `shouldBe` "FILE_NOT_FOUND"
+
 analyticsSpec
   :: DatabasePool
   -> ClickHouseClient
+  -> StorageClient
   -> Application
   -> Spec
-analyticsSpec databasePool clickHouse app =
+analyticsSpec databasePool clickHouse storageClient app =
   describe "analytics API" $ do
 
     it "delivers transactional outbox events to ClickHouse" $ do
@@ -924,9 +1133,7 @@ analyticsSpec databasePool clickHouse app =
           )
 
       let unavailableApp =
-            application
-              databasePool
-              unavailableClickHouse
+            application databasePool unavailableClickHouse storageClient
 
       coreResponse <-
         getRequest
