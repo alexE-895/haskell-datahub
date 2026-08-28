@@ -47,6 +47,12 @@ import DataHub.Analytics.Types
   , ItemSourceStat
   )
 import DataHub.API (API, apiProxy)
+import DataHub.Observability.Metrics
+  ( metricsMiddleware
+  )
+import DataHub.Observability.RequestLog
+  ( requestObservabilityMiddleware
+  )
 import DataHub.Database
   ( DatabasePool
   , checkDatabase
@@ -619,4 +625,8 @@ runServer databasePool clickHouse = do
 
   run
     8080
-    (application databasePool clickHouse)
+    ( metricsMiddleware
+        ( requestObservabilityMiddleware
+            (application databasePool clickHouse)
+        )
+    )

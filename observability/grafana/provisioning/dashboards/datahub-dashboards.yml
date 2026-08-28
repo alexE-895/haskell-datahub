@@ -1,0 +1,21 @@
+apiVersion: 1
+
+providers:
+
+  - name: DataHub
+
+    orgId: 1
+
+    folder: DataHub
+
+    type: file
+
+    disableDeletion: false
+
+    updateIntervalSeconds: 5
+
+    allowUiUpdates: true
+
+    options:
+
+      path: /var/lib/grafana/dashboards

@@ -69,7 +69,9 @@ library
         DataHub.Service.Item
         DataHub.Repository.Item
         DataHub.Item.Types
-        DataHub.API
+        DataHub.API
+        DataHub.Observability.RequestLog
+        DataHub.Observability.Metrics
         DataHub.Analytics.ClickHouse
         DataHub.Sync.Worker
         DataHub.Sync.Service
@@ -90,6 +92,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
+        wai-middleware-prometheus,
         http-client-tls,
         time,
         http-types,
