@@ -5,6 +5,10 @@ module DataHub.Server
   , runServer
   ) where
 
+import Control.Exception
+  ( SomeException
+  , try
+  )
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
   ( Value
@@ -33,6 +37,15 @@ import Servant
   , (:<|>) (..)
   )
 
+import DataHub.Analytics.ClickHouse
+  ( ClickHouseClient
+  , queryEventSummary
+  , queryItemsBySource
+  )
+import DataHub.Analytics.Types
+  ( EventSummary
+  , ItemSourceStat
+  )
 import DataHub.API (API, apiProxy)
 import DataHub.Database
   ( DatabasePool
@@ -442,8 +455,53 @@ handleItemError serviceError =
         "Offset must be zero or greater"
         Nothing
 
-server :: DatabasePool -> Server API
-server databasePool =
+analyticsEventSummaryHandler
+  :: ClickHouseClient
+  -> Handler [EventSummary]
+analyticsEventSummaryHandler clickHouse = do
+  result <-
+    liftIO
+      ( try (queryEventSummary clickHouse)
+          :: IO (Either SomeException [EventSummary])
+      )
+
+  case result of
+    Right summary ->
+      pure summary
+
+    Left _ ->
+      throwApiError
+        err503
+        "ANALYTICS_UNAVAILABLE"
+        "Analytics service is unavailable"
+        Nothing
+
+analyticsItemsBySourceHandler
+  :: ClickHouseClient
+  -> Handler [ItemSourceStat]
+analyticsItemsBySourceHandler clickHouse = do
+  result <-
+    liftIO
+      ( try (queryItemsBySource clickHouse)
+          :: IO (Either SomeException [ItemSourceStat])
+      )
+
+  case result of
+    Right stats ->
+      pure stats
+
+    Left _ ->
+      throwApiError
+        err503
+        "ANALYTICS_UNAVAILABLE"
+        "Analytics service is unavailable"
+        Nothing
+
+server
+  :: DatabasePool
+  -> ClickHouseClient
+  -> Server API
+server databasePool clickHouse =
        healthHandler
   :<|> readinessHandler databasePool
 
@@ -459,14 +517,26 @@ server databasePool =
   :<|> updateItemHandler databasePool
   :<|> deleteItemHandler databasePool
 
-application :: DatabasePool -> Application
-application databasePool =
+  :<|> analyticsEventSummaryHandler clickHouse
+  :<|> analyticsItemsBySourceHandler clickHouse
+
+application
+  :: DatabasePool
+  -> ClickHouseClient
+  -> Application
+application databasePool clickHouse =
   serveWithContext
     apiProxy
     (customErrorFormatters :. EmptyContext)
-    (server databasePool)
+    (server databasePool clickHouse)
 
-runServer :: DatabasePool -> IO ()
-runServer databasePool = do
+runServer
+  :: DatabasePool
+  -> ClickHouseClient
+  -> IO ()
+runServer databasePool clickHouse = do
   putStrLn "Haskell DataHub listening on http://127.0.0.1:8080"
-  run 8080 (application databasePool)
+
+  run
+    8080
+    (application databasePool clickHouse)

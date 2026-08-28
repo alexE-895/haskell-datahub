@@ -22,6 +22,10 @@ import Servant
   , type (:>)
   )
 
+import DataHub.Analytics.Types
+  ( EventSummary
+  , ItemSourceStat
+  )
 import DataHub.Item.Types
   ( CreateItemRequest
   , Item
@@ -84,6 +88,16 @@ type API =
   :<|> "items"
         :> Capture "itemId" Int64
         :> DeleteNoContent
+
+  :<|> "analytics"
+        :> "events"
+        :> "summary"
+        :> Get '[JSON] [EventSummary]
+
+  :<|> "analytics"
+        :> "items"
+        :> "by-source"
+        :> Get '[JSON] [ItemSourceStat]
 
 apiProxy :: Proxy API
 apiProxy = Proxy

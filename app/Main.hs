@@ -6,7 +6,10 @@ import System.Environment (getArgs)
 import System.Exit (die)
 
 import DataHub.App
-  ( runApp
+  ( runAnalyticsWorkerForeverApp
+  , runAnalyticsWorkerOnceApp
+  , runApp
+  , runClickHouseMigrationsApp
   , runMigrationsApp
   )
 
@@ -24,6 +27,15 @@ main = do
     ["migrate"] ->
       runMigrationsApp
 
+    ["clickhouse-migrate"] ->
+      runClickHouseMigrationsApp
+
+    ["analytics-flush"] ->
+      runAnalyticsWorkerOnceApp
+
+    ["analytics-worker"] ->
+      runAnalyticsWorkerForeverApp
+
     _ ->
       die
-        "Usage: haskell-datahub [serve|migrate]"
+        "Usage: haskell-datahub [serve|migrate|clickhouse-migrate|analytics-flush|analytics-worker]"

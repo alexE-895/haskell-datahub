@@ -15,12 +15,17 @@ import Control.Exception
   ( throwIO
   , try
   )
+import Data.Aeson
+  ( object
+  , (.=)
+  )
 import Data.Int (Int64)
 import Data.Maybe
   ( fromMaybe
   , listToMaybe
   )
 import Data.Pool (withResource)
+import Data.Text (Text)
 import Database.PostgreSQL.Simple
   ( Connection
   , Only (Only)
@@ -35,6 +40,9 @@ import Database.PostgreSQL.Simple.FromRow
   , field
   )
 
+import DataHub.Analytics.Outbox
+  ( enqueueAnalyticsEvent
+  )
 import DataHub.Database (DatabasePool)
 import DataHub.Types
   ( Category (..)
@@ -135,7 +143,12 @@ createCategory pool newCategory = do
                     :: IO [CategoryRow]
 
                 case rows of
-                  [CategoryRow category] ->
+                  [CategoryRow category] -> do
+                    enqueueCategoryEvent
+                      connection
+                      "category_created"
+                      category
+
                     pure (Right category)
 
                   _ ->
@@ -200,16 +213,16 @@ deleteCategory pool categoryId =
       targetRows <-
         query
           connection
-          "SELECT id FROM categories WHERE id = ? FOR UPDATE"
+          "SELECT id, name, description, parent_id FROM categories WHERE id = ? FOR UPDATE"
           (Only categoryId)
-          :: IO [Only Int64]
+          :: IO [CategoryRow]
 
-      if null targetRows
-        then
+      case listToMaybe targetRows of
+        Nothing ->
           pure
             (Left (DeleteCategoryNotFound categoryId))
 
-        else do
+        Just (CategoryRow category) -> do
           childRows <-
             query
               connection
@@ -230,7 +243,12 @@ deleteCategory pool categoryId =
                   (Only categoryId)
 
               if deletedRows == 1
-                then
+                then do
+                  enqueueCategoryEvent
+                    connection
+                    "category_deleted"
+                    category
+
                   pure (Right ())
 
                 else
@@ -292,11 +310,37 @@ updateInsideTransaction connection categoryId updateRequest = do
               :: IO [CategoryRow]
 
           case rows of
-            [CategoryRow updatedCategory] ->
+            [CategoryRow updatedCategory] -> do
+              enqueueCategoryEvent
+                connection
+                "category_updated"
+                updatedCategory
+
               pure (Right updatedCategory)
 
             _ ->
               error "UPDATE categories RETURNING produced unexpected row count"
+
+enqueueCategoryEvent
+  :: Connection
+  -> Text
+  -> Category
+  -> IO ()
+enqueueCategoryEvent connection eventType category =
+  enqueueAnalyticsEvent
+    connection
+    eventType
+    "category"
+    (categoryId category)
+    (Just (categoryId category))
+    "system"
+    ( object
+        [ "id" .= categoryId category
+        , "name" .= categoryName category
+        , "description" .= categoryDescription category
+        , "parentId" .= categoryParentId category
+        ]
+    )
 
 validateParent
   :: Connection

@@ -28,6 +28,7 @@ import Network.HTTP.Types
   , status200
   , status201
   , status204
+  , status503
   , status400
   , status404
   , status409
@@ -59,8 +60,22 @@ import Test.Hspec
   , shouldSatisfy
   )
 
+import DataHub.Analytics.ClickHouse
+  ( ClickHouseClient
+  , ClickHouseConfig (ClickHouseConfig)
+  , createClickHouseClient
+  , loadClickHouseConfig
+  )
+import DataHub.Analytics.Types
+  ( EventSummary (..)
+  , ItemSourceStat (..)
+  )
+import DataHub.Analytics.Worker
+  ( runAnalyticsWorkerOnce
+  )
 import DataHub.Database
-  ( createDatabasePool
+  ( DatabasePool
+  , createDatabasePool
   , loadDatabaseConfig
   )
 import DataHub.Server (application)
@@ -153,11 +168,14 @@ main :: IO ()
 main = do
   databaseConfig <- loadDatabaseConfig
   databasePool <- createDatabasePool databaseConfig
+  clickHouseConfig <- loadClickHouseConfig
+  clickHouse <- createClickHouseClient clickHouseConfig
 
   hspec $ do
-    spec (application databasePool)
-    itemSpec (application databasePool)
+    spec (application databasePool clickHouse)
+    itemSpec (application databasePool clickHouse)
 
+    analyticsSpec databasePool clickHouse (application databasePool clickHouse)
 spec :: Application -> Spec
 spec app = do
   describe "health/readiness" $ do
@@ -805,3 +823,141 @@ decodeItemList response =
     Left decodeFailure ->
       error
         ("Failed to decode ItemList response: " ++ decodeFailure)
+analyticsSpec
+  :: DatabasePool
+  -> ClickHouseClient
+  -> Application
+  -> Spec
+analyticsSpec databasePool clickHouse app =
+  describe "analytics API" $ do
+
+    it "delivers transactional outbox events to ClickHouse" $ do
+      category <-
+        createCategory
+          app
+          "AnalyticsCategory"
+          Nothing
+          Nothing
+
+      _ <-
+        createItemForTest
+          app
+          (responseCategoryId category)
+          "Analytics Item"
+          (Just "analytics integration test")
+          (Just "integration")
+          (Just "analytics-item-1")
+
+      claimed <-
+        runAnalyticsWorkerOnce
+          databasePool
+          clickHouse
+
+      (claimed > 0)
+        `shouldBe` True
+
+      summaryResponse <-
+        getRequest
+          app
+          "/analytics/events/summary"
+
+      simpleStatus summaryResponse
+        `shouldBe` status200
+
+      summaries <-
+        decodeEventSummaries summaryResponse
+
+      any
+        (\summary ->
+            eventSummaryEventType summary == "item_created"
+              && eventSummaryEntityType summary == "item"
+              && eventSummaryTotal summary >= 1
+        )
+        summaries
+        `shouldBe` True
+
+      sourceResponse <-
+        getRequest
+          app
+          "/analytics/items/by-source"
+
+      simpleStatus sourceResponse
+        `shouldBe` status200
+
+      sourceStats <-
+        decodeItemSourceStats sourceResponse
+
+      any
+        (\stat ->
+            itemSourceStatSource stat == "integration"
+              && itemSourceStatEvents stat >= 1
+              && itemSourceStatUniqueItems stat >= 1
+        )
+        sourceStats
+        `shouldBe` True
+
+    it "keeps core API available when ClickHouse is unavailable" $ do
+      unavailableClickHouse <-
+        createClickHouseClient
+          ( ClickHouseConfig
+              "127.0.0.1"
+              65534
+              "unavailable"
+              "invalid"
+              "invalid"
+          )
+
+      let unavailableApp =
+            application
+              databasePool
+              unavailableClickHouse
+
+      coreResponse <-
+        getRequest
+          unavailableApp
+          "/items"
+
+      simpleStatus coreResponse
+        `shouldBe` status200
+
+      analyticsResponse <-
+        getRequest
+          unavailableApp
+          "/analytics/events/summary"
+
+      simpleStatus analyticsResponse
+        `shouldBe` status503
+
+      apiError <-
+        decodeError analyticsResponse
+
+      responseErrorCode apiError
+        `shouldBe` "ANALYTICS_UNAVAILABLE"
+
+decodeEventSummaries
+  :: SResponse
+  -> IO [EventSummary]
+decodeEventSummaries response =
+  case eitherDecode (simpleBody response) of
+    Right summaries ->
+      pure summaries
+
+    Left decodeFailure ->
+      error
+        ( "Failed to decode EventSummary response: "
+            ++ decodeFailure
+        )
+
+decodeItemSourceStats
+  :: SResponse
+  -> IO [ItemSourceStat]
+decodeItemSourceStats response =
+  case eitherDecode (simpleBody response) of
+    Right stats ->
+      pure stats
+
+    Left decodeFailure ->
+      error
+        ( "Failed to decode ItemSourceStat response: "
+            ++ decodeFailure
+        )

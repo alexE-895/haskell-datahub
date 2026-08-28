@@ -15,12 +15,17 @@ import Control.Exception
   ( throwIO
   , try
   )
+import Data.Aeson
+  ( object
+  , (.=)
+  )
 import Data.Int (Int64)
 import Data.Maybe
   ( fromMaybe
   , listToMaybe
   )
 import Data.Pool (withResource)
+import Data.Text (Text)
 import Database.PostgreSQL.Simple
   ( Connection
   , Only (Only)
@@ -34,6 +39,9 @@ import Database.PostgreSQL.Simple.FromRow
   , field
   )
 
+import DataHub.Analytics.Outbox
+  ( enqueueAnalyticsEvent
+  )
 import DataHub.Database (DatabasePool)
 import DataHub.Item.Types
   ( Item (..)
@@ -172,7 +180,12 @@ createItem pool newItem = do
                     :: IO [ItemRow]
 
                 case rows of
-                  [ItemRow item] ->
+                  [ItemRow item] -> do
+                    enqueueItemEvent
+                      connection
+                      "item_created"
+                      item
+
                     pure (Right item)
 
                   _ ->
@@ -237,15 +250,15 @@ deleteItem pool itemId =
       rows <-
         query
           connection
-          "SELECT id FROM items WHERE id = ? FOR UPDATE"
+          "SELECT id, category_id, name, description, source, external_id FROM items WHERE id = ? FOR UPDATE"
           (Only itemId)
-          :: IO [Only Int64]
+          :: IO [ItemRow]
 
-      if null rows
-        then
+      case listToMaybe rows of
+        Nothing ->
           pure (Left (DeleteItemNotFound itemId))
 
-        else do
+        Just (ItemRow item) -> do
           affected <-
             execute
               connection
@@ -253,8 +266,16 @@ deleteItem pool itemId =
               (Only itemId)
 
           if affected == 1
-            then pure (Right ())
-            else error "DELETE item affected unexpected row count"
+            then do
+              enqueueItemEvent
+                connection
+                "item_deleted"
+                item
+
+              pure (Right ())
+
+            else
+              error "DELETE item affected unexpected row count"
 
 updateInsideTransaction
   :: Connection
@@ -326,11 +347,39 @@ updateInsideTransaction connection itemId updateRequest = do
               :: IO [ItemRow]
 
           case rows of
-            [ItemRow updatedItem] ->
+            [ItemRow updatedItem] -> do
+              enqueueItemEvent
+                connection
+                "item_updated"
+                updatedItem
+
               pure (Right updatedItem)
 
             _ ->
               error "UPDATE item RETURNING produced unexpected row count"
+
+enqueueItemEvent
+  :: Connection
+  -> Text
+  -> Item
+  -> IO ()
+enqueueItemEvent connection eventType item =
+  enqueueAnalyticsEvent
+    connection
+    eventType
+    "item"
+    (itemId item)
+    (Just (itemCategoryId item))
+    (itemSource item)
+    ( object
+        [ "id" .= itemId item
+        , "categoryId" .= itemCategoryId item
+        , "name" .= itemName item
+        , "description" .= itemDescription item
+        , "source" .= itemSource item
+        , "externalId" .= itemExternalId item
+        ]
+    )
 
 categoryExistsForShare
   :: Connection

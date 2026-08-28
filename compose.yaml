@@ -23,5 +23,30 @@ services:
       retries: 10
       start_period: 10s
 
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-datahub_analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-datahub}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-datahub_clickhouse_dev_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "clickhouse-client --user=$${CLICKHOUSE_USER} --password=$${CLICKHOUSE_PASSWORD} --query='SELECT 1'"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 volumes:
+  clickhouse_data:
   postgres_data:

@@ -70,6 +70,10 @@ library
         DataHub.Repository.Item
         DataHub.Item.Types
         DataHub.API
+        DataHub.Analytics.ClickHouse
+        DataHub.Analytics.Worker
+        DataHub.Analytics.Outbox
+        DataHub.Analytics.Types
         DataHub.Server
         DataHub.Types
 
@@ -81,10 +85,14 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
+        time,
+        http-types,
+        bytestring,
         base ^>=4.20.2.0,
         aeson,
         directory,
         filepath,
+        http-client,
         servant,
         postgresql-simple,
         resource-pool,
