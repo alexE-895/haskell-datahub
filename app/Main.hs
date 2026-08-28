@@ -1,8 +1,29 @@
-﻿module Main
+module Main
   ( main
   ) where
 
-import DataHub.App (runApp)
+import System.Environment (getArgs)
+import System.Exit (die)
+
+import DataHub.App
+  ( runApp
+  , runMigrationsApp
+  )
 
 main :: IO ()
-main = runApp
+main = do
+  arguments <- getArgs
+
+  case arguments of
+    [] ->
+      runApp
+
+    ["serve"] ->
+      runApp
+
+    ["migrate"] ->
+      runMigrationsApp
+
+    _ ->
+      die
+        "Usage: haskell-datahub [serve|migrate]"

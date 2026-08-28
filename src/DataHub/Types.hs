@@ -6,19 +6,26 @@ module DataHub.Types
   , CreateCategoryRequest (..)
   , HealthResponse (..)
   , NewCategory (..)
+  , PatchField (..)
   , ReadinessResponse (..)
+  , UpdateCategory (..)
+  , UpdateCategoryRequest (..)
   ) where
 
 import Data.Aeson
   ( FromJSON (parseJSON)
+  , Object
   , ToJSON (toJSON)
-  , Value
+  , Value (Null)
   , object
   , withObject
   , (.:)
   , (.:?)
   , (.=)
   )
+import Data.Aeson.Key (Key)
+import qualified Data.Aeson.KeyMap as KeyMap
+import Data.Aeson.Types (Parser)
 import Data.Int (Int64)
 import Data.Text (Text)
 
@@ -56,6 +63,49 @@ data NewCategory = NewCategory
   { newCategoryName :: Text
   , newCategoryDescription :: Maybe Text
   , newCategoryParentId :: Maybe Int64
+  }
+
+data PatchField a
+  = PatchKeep
+  | PatchSet a
+  | PatchClear
+  deriving (Eq, Show)
+
+data UpdateCategoryRequest = UpdateCategoryRequest
+  { requestCategoryName :: PatchField Text
+  , requestCategoryDescription :: PatchField Text
+  , requestCategoryParentId :: PatchField Int64
+  }
+  deriving (Eq, Show)
+
+instance FromJSON UpdateCategoryRequest where
+  parseJSON =
+    withObject "UpdateCategoryRequest" $ \objectValue ->
+      UpdateCategoryRequest
+        <$> parsePatchField objectValue "name"
+        <*> parsePatchField objectValue "description"
+        <*> parsePatchField objectValue "parentId"
+
+parsePatchField
+  :: FromJSON a
+  => Object
+  -> Key
+  -> Parser (PatchField a)
+parsePatchField objectValue key =
+  case KeyMap.lookup key objectValue of
+    Nothing ->
+      pure PatchKeep
+
+    Just Null ->
+      pure PatchClear
+
+    Just value ->
+      PatchSet <$> parseJSON value
+
+data UpdateCategory = UpdateCategory
+  { updateCategoryName :: Maybe Text
+  , updateCategoryDescription :: PatchField Text
+  , updateCategoryParentId :: PatchField Int64
   }
 
 data ApiError = ApiError

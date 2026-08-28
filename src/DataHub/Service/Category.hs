@@ -1,8 +1,10 @@
 module DataHub.Service.Category
   ( CategoryServiceError (..)
   , createCategory
+  , deleteCategory
   , findCategoryById
   , listCategories
+  , updateCategory
   ) where
 
 import Data.Int (Int64)
@@ -14,19 +16,30 @@ import DataHub.Types
   ( Category
   , CreateCategoryRequest (..)
   , NewCategory (NewCategory)
+  , PatchField (..)
+  , UpdateCategory (UpdateCategory)
+  , UpdateCategoryRequest (..)
   )
 
 data CategoryServiceError
   = CategoryNameEmpty
   | CategoryNameTooLong
+  | CategoryNameConflict
+  | CategoryNotFound Int64
   | CategoryParentNotFound Int64
+  | CategoryCycleDetected Int64 Int64
+  | CategoryHasChildren Int64
+  | CategoryUpdateEmpty
   deriving (Eq, Show)
 
 listCategories :: DatabasePool -> IO [Category]
 listCategories =
   Repository.listCategories
 
-findCategoryById :: DatabasePool -> Int64 -> IO (Maybe Category)
+findCategoryById
+  :: DatabasePool
+  -> Int64
+  -> IO (Maybe Category)
 findCategoryById =
   Repository.findCategoryById
 
@@ -39,36 +52,139 @@ createCategory pool request = do
         Text.strip (createCategoryName request)
 
       normalizedDescription =
-        normalizeDescription (createCategoryDescription request)
+        normalizeCreateDescription
+          (createCategoryDescription request)
 
   if Text.null normalizedName
     then
       pure (Left CategoryNameEmpty)
 
-    else if Text.length normalizedName > 120
-      then
-        pure (Left CategoryNameTooLong)
+    else
+      if Text.length normalizedName > 120
+        then
+          pure (Left CategoryNameTooLong)
 
-      else do
-        repositoryResult <-
-          Repository.createCategory
-            pool
-            ( NewCategory
-                normalizedName
-                normalizedDescription
-                (createCategoryParentId request)
-            )
+        else do
+          repositoryResult <-
+            Repository.createCategory
+              pool
+              ( NewCategory
+                  normalizedName
+                  normalizedDescription
+                  (createCategoryParentId request)
+              )
 
-        pure $
-          case repositoryResult of
-            Right category ->
-              Right category
+          pure $
+            case repositoryResult of
+              Right category ->
+                Right category
 
-            Left (Repository.ParentCategoryNotFound parentId) ->
-              Left (CategoryParentNotFound parentId)
+              Left (Repository.ParentCategoryNotFound parentId) ->
+                Left (CategoryParentNotFound parentId)
 
-normalizeDescription :: Maybe Text.Text -> Maybe Text.Text
-normalizeDescription description =
+              Left Repository.CreateCategoryNameConflict ->
+                Left CategoryNameConflict
+
+updateCategory
+  :: DatabasePool
+  -> Int64
+  -> UpdateCategoryRequest
+  -> IO (Either CategoryServiceError Category)
+updateCategory pool categoryId request
+  | isEmptyUpdate request =
+      pure (Left CategoryUpdateEmpty)
+
+  | otherwise =
+      case normalizeUpdateName (requestCategoryName request) of
+        Left serviceError ->
+          pure (Left serviceError)
+
+        Right normalizedName -> do
+          let normalizedDescription =
+                normalizeDescriptionPatch
+                  (requestCategoryDescription request)
+
+              normalizedUpdate =
+                UpdateCategory
+                  normalizedName
+                  normalizedDescription
+                  (requestCategoryParentId request)
+
+          repositoryResult <-
+            Repository.updateCategory
+              pool
+              categoryId
+              normalizedUpdate
+
+          pure $
+            case repositoryResult of
+              Right category ->
+                Right category
+
+              Left (Repository.UpdateCategoryNotFound missingId) ->
+                Left (CategoryNotFound missingId)
+
+              Left (Repository.UpdateParentCategoryNotFound parentId) ->
+                Left (CategoryParentNotFound parentId)
+
+              Left
+                (Repository.UpdateCategoryCycleDetected sourceId parentId) ->
+                  Left
+                    (CategoryCycleDetected sourceId parentId)
+
+              Left Repository.UpdateCategoryNameConflict ->
+                Left CategoryNameConflict
+
+deleteCategory
+  :: DatabasePool
+  -> Int64
+  -> IO (Either CategoryServiceError ())
+deleteCategory pool categoryId = do
+  repositoryResult <-
+    Repository.deleteCategory pool categoryId
+
+  pure $
+    case repositoryResult of
+      Right () ->
+        Right ()
+
+      Left (Repository.DeleteCategoryNotFound missingId) ->
+        Left (CategoryNotFound missingId)
+
+      Left (Repository.DeleteCategoryHasChildren parentId) ->
+        Left (CategoryHasChildren parentId)
+
+isEmptyUpdate :: UpdateCategoryRequest -> Bool
+isEmptyUpdate request =
+  requestCategoryName request == PatchKeep
+    && requestCategoryDescription request == PatchKeep
+    && requestCategoryParentId request == PatchKeep
+
+normalizeUpdateName
+  :: PatchField Text.Text
+  -> Either CategoryServiceError (Maybe Text.Text)
+normalizeUpdateName patch =
+  case patch of
+    PatchKeep ->
+      Right Nothing
+
+    PatchClear ->
+      Left CategoryNameEmpty
+
+    PatchSet rawName ->
+      let normalizedName =
+            Text.strip rawName
+       in if Text.null normalizedName
+            then Left CategoryNameEmpty
+            else
+              if Text.length normalizedName > 120
+                then Left CategoryNameTooLong
+                else Right (Just normalizedName)
+
+normalizeCreateDescription
+  :: Maybe Text.Text
+  -> Maybe Text.Text
+normalizeCreateDescription description =
   case Text.strip <$> description of
     Just value
       | Text.null value ->
@@ -76,3 +192,21 @@ normalizeDescription description =
 
     other ->
       other
+
+normalizeDescriptionPatch
+  :: PatchField Text.Text
+  -> PatchField Text.Text
+normalizeDescriptionPatch patch =
+  case patch of
+    PatchKeep ->
+      PatchKeep
+
+    PatchClear ->
+      PatchClear
+
+    PatchSet rawValue ->
+      let normalizedValue =
+            Text.strip rawValue
+       in if Text.null normalizedValue
+            then PatchClear
+            else PatchSet normalizedValue

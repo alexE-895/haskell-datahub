@@ -63,6 +63,7 @@ library
     exposed-modules:
         DataHub.App
         DataHub.Database
+        DataHub.Migrations
         DataHub.Repository.Category
         DataHub.Service.Category
         DataHub.API
@@ -79,6 +80,8 @@ library
     build-depends:
         base ^>=4.20.2.0,
         aeson,
+        directory,
+        filepath,
         servant,
         postgresql-simple,
         resource-pool,

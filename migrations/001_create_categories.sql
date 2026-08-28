@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE categories (
     id          BIGSERIAL PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -14,5 +12,3 @@ CREATE TABLE categories (
 
 CREATE INDEX idx_categories_parent_id
     ON categories(parent_id);
-
-COMMIT;
