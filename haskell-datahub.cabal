@@ -69,12 +69,16 @@ library
         DataHub.Service.Item
         DataHub.Repository.Item
         DataHub.Item.Types
-        DataHub.API
+        DataHub.API
+
         DataHub.Observability.RequestLog
         DataHub.Observability.Metrics
         DataHub.Analytics.ClickHouse
-        DataHub.Sync.Worker
-        DataHub.Storage.Minio
+        DataHub.Sync.Worker
+
+        DataHub.Storage.Minio
+
+
         DataHub.Storage.Service
         DataHub.Storage.Repository
         DataHub.Storage.Types
@@ -128,6 +132,8 @@ executable haskell-datahub
 
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
+
+    ghc-options: -threaded -rtsopts
 
     -- Modules included in this executable, other than Main.
     -- other-modules:

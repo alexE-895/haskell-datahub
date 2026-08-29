@@ -2,6 +2,12 @@ module Main
   ( main
   ) where
 
+import System.IO
+  ( BufferMode (LineBuffering)
+  , hSetBuffering
+  , stderr
+  , stdout
+  )
 import System.Environment (getArgs)
 import System.Exit (die)
 
@@ -19,7 +25,8 @@ import DataHub.App
 
 main :: IO ()
 main = do
-
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering
   arguments <-
     getArgs
 

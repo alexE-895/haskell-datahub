@@ -1,0 +1,189 @@
+services:
+
+  # ==========================================================
+  # POSTGRESQL MIGRATIONS
+  # ==========================================================
+
+  datahub-migrate:
+    image: haskell-datahub:dev
+
+    restart: "no"
+
+    command:
+      - migrate
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: datahub
+      POSTGRES_USER: datahub
+      POSTGRES_PASSWORD: datahub_dev_password
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  # ==========================================================
+  # CLICKHOUSE MIGRATIONS
+  # ==========================================================
+
+  datahub-clickhouse-migrate:
+    image: haskell-datahub:dev
+
+    restart: "no"
+
+    command:
+      - clickhouse-migrate
+
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: datahub_analytics
+      CLICKHOUSE_USER: datahub
+      CLICKHOUSE_PASSWORD: datahub_clickhouse_dev_password
+
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+
+  # ==========================================================
+  # HTTP API
+  # ==========================================================
+
+  datahub-api:
+    image: haskell-datahub:dev
+
+    init: true
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: datahub
+      POSTGRES_USER: datahub
+      POSTGRES_PASSWORD: datahub_dev_password
+
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: datahub_analytics
+      CLICKHOUSE_USER: datahub
+      CLICKHOUSE_PASSWORD: datahub_clickhouse_dev_password
+
+      S3_HOST: minio
+      S3_PORT: "9000"
+      S3_SECURE: "false"
+      S3_ACCESS_KEY: datahub
+      S3_SECRET_KEY: datahub_minio_dev_password
+      S3_BUCKET: datahub-files
+
+      GITHUB_API_BASE_URL: https://api.github.com
+      GITHUB_API_VERSION: "2026-03-10"
+
+    depends_on:
+
+      datahub-migrate:
+        condition: service_completed_successfully
+
+      datahub-clickhouse-migrate:
+        condition: service_completed_successfully
+
+      minio:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8080/ready || exit 1
+
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+    stop_grace_period: 10s
+
+
+  # ==========================================================
+  # ANALYTICS OUTBOX WORKER
+  #
+  # PostgreSQL analytics_outbox
+  #            ↓
+  #        ClickHouse
+  # ==========================================================
+
+  datahub-analytics-worker:
+    image: haskell-datahub:dev
+
+    init: true
+    restart: unless-stopped
+
+    command:
+      - analytics-worker
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: datahub
+      POSTGRES_USER: datahub
+      POSTGRES_PASSWORD: datahub_dev_password
+
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: datahub_analytics
+      CLICKHOUSE_USER: datahub
+      CLICKHOUSE_PASSWORD: datahub_clickhouse_dev_password
+
+    depends_on:
+
+      datahub-migrate:
+        condition: service_completed_successfully
+
+      datahub-clickhouse-migrate:
+        condition: service_completed_successfully
+
+    stop_grace_period: 10s
+
+
+  # ==========================================================
+  # GITHUB SYNC WORKER
+  #
+  # PostgreSQL external_sync_jobs
+  #            ↓
+  #         GitHub API
+  #            ↓
+  #       PostgreSQL items
+  # ==========================================================
+
+  datahub-sync-worker:
+    image: haskell-datahub:dev
+
+    init: true
+    restart: unless-stopped
+
+    command:
+      - sync-worker
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: datahub
+      POSTGRES_USER: datahub
+      POSTGRES_PASSWORD: datahub_dev_password
+
+      GITHUB_API_BASE_URL: https://api.github.com
+      GITHUB_API_VERSION: "2026-03-10"
+
+      # Optional:
+      # GITHUB_TOKEN:
+
+    depends_on:
+
+      datahub-migrate:
+        condition: service_completed_successfully
+
+    stop_grace_period: 10s
