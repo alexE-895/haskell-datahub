@@ -1,0 +1,218 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: datahub-postgres-migrate
+  namespace: datahub
+  labels:
+    app.kubernetes.io/name: datahub-postgres-migrate
+    app.kubernetes.io/part-of: haskell-datahub
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: datahub-postgres-migrate
+        app.kubernetes.io/part-of: haskell-datahub
+
+    spec:
+      restartPolicy: Never
+
+      initContainers:
+        - name: wait-postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_DB
+
+          command:
+            - /bin/sh
+            - -c
+
+          args:
+            - |
+              set -eu
+
+              i=1
+
+              while [ "$i" -le 60 ]; do
+                echo "POSTGRES_WAIT_ATTEMPT=$i"
+
+                if pg_isready \
+                  -h postgres \
+                  -p 5432 \
+                  -U "$POSTGRES_USER" \
+                  -d "$POSTGRES_DB"
+                then
+                  echo "POSTGRES_READY=PASS"
+                  exit 0
+                fi
+
+                i=$((i + 1))
+                sleep 1
+              done
+
+              echo "POSTGRES_READY=FAILED"
+              exit 1
+
+      containers:
+        - name: migrate
+          image: haskell-datahub:dev
+          imagePullPolicy: Never
+
+          args:
+            - migrate
+
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_HOST
+
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_PORT
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: POSTGRES_PASSWORD
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: datahub-clickhouse-migrate
+  namespace: datahub
+  labels:
+    app.kubernetes.io/name: datahub-clickhouse-migrate
+    app.kubernetes.io/part-of: haskell-datahub
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: datahub-clickhouse-migrate
+        app.kubernetes.io/part-of: haskell-datahub
+
+    spec:
+      restartPolicy: Never
+
+      initContainers:
+        - name: wait-clickhouse
+          image: curlimages/curl:8.16.0
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_USER
+
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: CLICKHOUSE_PASSWORD
+
+          command:
+            - /bin/sh
+            - -c
+
+          args:
+            - |
+              set -eu
+
+              i=1
+
+              while [ "$i" -le 60 ]; do
+                echo "CLICKHOUSE_WAIT_ATTEMPT=$i"
+
+                if curl \
+                  --fail \
+                  --silent \
+                  --show-error \
+                  --user "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+                  http://clickhouse:8123/ping \
+                  >/dev/null
+                then
+                  echo "CLICKHOUSE_READY=PASS"
+                  exit 0
+                fi
+
+                i=$((i + 1))
+                sleep 1
+              done
+
+              echo "CLICKHOUSE_READY=FAILED"
+              exit 1
+
+      containers:
+        - name: migrate
+          image: haskell-datahub:dev
+          imagePullPolicy: Never
+
+          args:
+            - clickhouse-migrate
+
+          env:
+            - name: CLICKHOUSE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_HOST
+
+            - name: CLICKHOUSE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_PORT
+
+            - name: CLICKHOUSE_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_DB
+
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_USER
+
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: CLICKHOUSE_PASSWORD

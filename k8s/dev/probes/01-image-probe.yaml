@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: datahub-image-probe
+  namespace: datahub
+  labels:
+    app: datahub-image-probe
+spec:
+  restartPolicy: Never
+
+  containers:
+    - name: probe
+      image: haskell-datahub:dev
+      imagePullPolicy: Never
+
+      command:
+        - /bin/sh
+        - -c
+        - |
+          echo "KUBERNETES_IMAGE_PROBE=START"
+          test -x /usr/local/bin/haskell-datahub
+          echo "KUBERNETES_IMAGE_PROBE=PASS"
+          ls -lh /usr/local/bin/haskell-datahub

@@ -1,0 +1,192 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datahub-analytics-worker
+  namespace: datahub
+  labels:
+    app.kubernetes.io/name: datahub-analytics-worker
+    app.kubernetes.io/part-of: haskell-datahub
+spec:
+  replicas: 1
+
+  strategy:
+    type: RollingUpdate
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-analytics-worker
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: datahub-analytics-worker
+        app.kubernetes.io/part-of: haskell-datahub
+
+    spec:
+      containers:
+        - name: worker
+          image: haskell-datahub:dev
+          imagePullPolicy: Never
+
+          args:
+            - analytics-worker
+
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_HOST
+
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_PORT
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: POSTGRES_PASSWORD
+
+            - name: CLICKHOUSE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_HOST
+
+            - name: CLICKHOUSE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_PORT
+
+            - name: CLICKHOUSE_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_DB
+
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: CLICKHOUSE_USER
+
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: CLICKHOUSE_PASSWORD
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+      terminationGracePeriodSeconds: 15
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datahub-sync-worker
+  namespace: datahub
+  labels:
+    app.kubernetes.io/name: datahub-sync-worker
+    app.kubernetes.io/part-of: haskell-datahub
+spec:
+  replicas: 1
+
+  strategy:
+    type: RollingUpdate
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-sync-worker
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: datahub-sync-worker
+        app.kubernetes.io/part-of: haskell-datahub
+
+    spec:
+      containers:
+        - name: worker
+          image: haskell-datahub:dev
+          imagePullPolicy: Never
+
+          args:
+            - sync-worker
+
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_HOST
+
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_PORT
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datahub-secrets
+                  key: POSTGRES_PASSWORD
+
+            - name: GITHUB_API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: GITHUB_API_BASE_URL
+
+            - name: GITHUB_API_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: GITHUB_API_VERSION
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+      terminationGracePeriodSeconds: 15

@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: datahub-api-smoke
+  namespace: datahub
+spec:
+  restartPolicy: Never
+
+  containers:
+    - name: probe
+      image: curlimages/curl:8.16.0
+      imagePullPolicy: IfNotPresent
+
+      command:
+        - /bin/sh
+        - -c
+
+      args:
+        - |
+          set -eu
+
+          BASE="http://datahub-api:8080"
+
+          echo "===== HEALTH ====="
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            "$BASE/health"
+
+          echo
+          echo "KUBERNETES_API_HEALTH_PASS"
+
+          echo
+          echo "===== READY ====="
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            "$BASE/ready"
+
+          echo
+          echo "KUBERNETES_API_READY_PASS"
+
+          echo
+          echo "===== ITEMS ====="
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            "$BASE/items"
+
+          echo
+          echo "KUBERNETES_API_ITEMS_PASS"
+
+          echo
+          echo "KUBERNETES_API_SMOKE_PASS"
