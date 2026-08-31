@@ -25,7 +25,7 @@ import Network.Wai.Handler.Warp (run)
 import Servant
   ( Context (..)
   , ErrorFormatters (..)
-  , Handler
+  , Handler
   , Headers
   , Header
   , addHeader

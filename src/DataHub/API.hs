@@ -13,7 +13,7 @@ import Data.Text (Text)
 import Servant
   ( Capture
   , DeleteNoContent
-  , Get
+  , Get
   , OctetStream
   , Headers
   , Header
