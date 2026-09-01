@@ -157,6 +157,7 @@ test-suite haskell-datahub-test
     hs-source-dirs:
         test
     main-is: Main.hs
+    ghc-options: -threaded -rtsopts
     default-language: GHC2024
     build-depends:
         warp,
