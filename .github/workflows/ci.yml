@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  compose-validation:
+    name: Compose validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: datahub
+      POSTGRES_USER: datahub
+      POSTGRES_PASSWORD: ci_postgres_password
+      POSTGRES_PORT: "5432"
+
+      CLICKHOUSE_HOST: 127.0.0.1
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: datahub_analytics
+      CLICKHOUSE_USER: datahub
+      CLICKHOUSE_PASSWORD: ci_clickhouse_password
+
+      MINIO_ROOT_USER: datahub
+      MINIO_ROOT_PASSWORD: ci_minio_password
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Validate core and storage Compose
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f compose.storage.yaml \
+            config --quiet
+
+      - name: Compose validation passed
+        run: echo "COMPOSE VALIDATION PASSED"
+
+
+  nix:
+    name: Nix build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Nix version
+        run: nix --version
+
+      - name: Validate flake
+        run: nix flake check --print-build-logs
+
+      - name: Build application
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="$(
+            nix build \
+              .#packages.x86_64-linux.default \
+              --no-link \
+              --print-out-paths \
+              --print-build-logs
+          )"
+
+          echo "NIX_OUTPUT=$OUT"
+
+          if [ ! -x "$OUT/bin/haskell-datahub" ]; then
+            echo "Application binary not found"
+            exit 1
+          fi
+
+          "$OUT/bin/haskell-datahub" --help >/dev/null 2>&1 || true
+
+          echo "NIX APPLICATION BUILD PASSED"
+
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Docker version
+        run: docker --version
+
+      - name: Build application image
+        run: |
+          docker build \
+            --pull \
+            --tag haskell-datahub:ci \
+            .
+
+      - name: Verify image
+        run: |
+          docker image inspect haskell-datahub:ci >/dev/null
+          echo "DOCKER IMAGE BUILD PASSED"
