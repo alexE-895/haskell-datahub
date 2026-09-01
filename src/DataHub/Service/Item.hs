@@ -14,6 +14,11 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 
 import DataHub.Database (DatabasePool)
+import DataHub.Domain.Id
+  ( CategoryId
+  , ItemId
+  , entityIdToInt64
+  )
 import DataHub.Item.Types
   ( CreateItemRequest (..)
   , Item
@@ -43,15 +48,17 @@ data ItemServiceError
 
 findItemById
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> IO (Maybe Item)
-findItemById =
+findItemById pool itemId =
   Repository.findItemById
+    pool
+    (entityIdToInt64 itemId)
 
 listItems
   :: DatabasePool
   -> Maybe Text
-  -> Maybe Int64
+  -> Maybe CategoryId
   -> Maybe Text
   -> Maybe Int
   -> Maybe Int
@@ -82,7 +89,7 @@ listItems pool search categoryId source requestedLimit requestedOffset = do
           let listQuery =
                 ItemListQuery
                   normalizedSearch
-                  categoryId
+                  (entityIdToInt64 <$> categoryId)
                   normalizedSource
                   limitValue
                   offsetValue
@@ -126,7 +133,7 @@ createItem pool request =
 
 updateItem
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> UpdateItemRequest
   -> IO (Either ItemServiceError Item)
 updateItem pool itemId request
@@ -142,7 +149,7 @@ updateItem pool itemId request
           repositoryResult <-
             Repository.updateItem
               pool
-              itemId
+              (entityIdToInt64 itemId)
               updateValue
 
           pure $
@@ -161,11 +168,13 @@ updateItem pool itemId request
 
 deleteItem
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> IO (Either ItemServiceError ())
 deleteItem pool itemId = do
   repositoryResult <-
-    Repository.deleteItem pool itemId
+    Repository.deleteItem
+      pool
+      (entityIdToInt64 itemId)
 
   pure $
     case repositoryResult of

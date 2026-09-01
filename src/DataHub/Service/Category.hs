@@ -11,6 +11,10 @@ import Data.Int (Int64)
 import qualified Data.Text as Text
 
 import DataHub.Database (DatabasePool)
+import DataHub.Domain.Id
+  ( CategoryId
+  , entityIdToInt64
+  )
 import qualified DataHub.Repository.Category as Repository
 import DataHub.Types
   ( Category
@@ -38,10 +42,12 @@ listCategories =
 
 findCategoryById
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> IO (Maybe Category)
-findCategoryById =
+findCategoryById pool categoryId =
   Repository.findCategoryById
+    pool
+    (entityIdToInt64 categoryId)
 
 createCategory
   :: DatabasePool
@@ -87,7 +93,7 @@ createCategory pool request = do
 
 updateCategory
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> UpdateCategoryRequest
   -> IO (Either CategoryServiceError Category)
 updateCategory pool categoryId request
@@ -113,7 +119,7 @@ updateCategory pool categoryId request
           repositoryResult <-
             Repository.updateCategory
               pool
-              categoryId
+              (entityIdToInt64 categoryId)
               normalizedUpdate
 
           pure $
@@ -137,11 +143,13 @@ updateCategory pool categoryId request
 
 deleteCategory
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> IO (Either CategoryServiceError ())
 deleteCategory pool categoryId = do
   repositoryResult <-
-    Repository.deleteCategory pool categoryId
+    Repository.deleteCategory
+      pool
+      (entityIdToInt64 categoryId)
 
   pure $
     case repositoryResult of

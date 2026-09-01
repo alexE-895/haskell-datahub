@@ -64,6 +64,10 @@ import DataHub.Database
   ( DatabasePool
   , checkDatabase
   )
+import DataHub.Domain.Id
+  ( CategoryId
+  , ItemId
+  )
 import DataHub.Item.Types
   ( CreateItemRequest
   , Item
@@ -182,7 +186,7 @@ categoriesHandler databasePool =
 
 categoryByIdHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> Handler Category
 categoryByIdHandler databasePool categoryId = do
   result <-
@@ -213,7 +217,7 @@ createCategoryHandler databasePool request = do
 
 updateCategoryHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> UpdateCategoryRequest
   -> Handler Category
 updateCategoryHandler databasePool categoryId request = do
@@ -225,7 +229,7 @@ updateCategoryHandler databasePool categoryId request = do
 
 deleteCategoryHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> Handler NoContent
 deleteCategoryHandler databasePool categoryId = do
   result <-
@@ -312,7 +316,7 @@ handleCategoryError serviceError =
 itemsHandler
   :: DatabasePool
   -> Maybe Text
-  -> Maybe Int64
+  -> Maybe CategoryId
   -> Maybe Text
   -> Maybe Int
   -> Maybe Int
@@ -338,7 +342,7 @@ itemsHandler databasePool search categoryId source limit offset = do
 
 itemByIdHandler
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> Handler Item
 itemByIdHandler databasePool itemId = do
   result <-
@@ -368,7 +372,7 @@ createItemHandler databasePool request = do
 
 updateItemHandler
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> UpdateItemRequest
   -> Handler Item
 updateItemHandler databasePool itemId request = do
@@ -380,7 +384,7 @@ updateItemHandler databasePool itemId request = do
 
 deleteItemHandler
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> Handler NoContent
 deleteItemHandler databasePool itemId = do
   result <-
