@@ -49,10 +49,28 @@ spec:
         app.kubernetes.io/part-of: haskell-datahub
 
     spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: api
           image: haskell-datahub:dev
           imagePullPolicy: Never
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            capabilities:
+              drop:
+                - ALL
 
           ports:
             - name: http
@@ -114,4 +132,13 @@ spec:
               cpu: 1000m
               memory: 512Mi
 
-      terminationGracePeriodSeconds: 15
+          volumeMounts:
+            - name: datahub-tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: datahub-tmp
+          emptyDir:
+            sizeLimit: 128Mi
+
+      terminationGracePeriodSeconds: 30

@@ -23,15 +23,39 @@ spec:
         app.kubernetes.io/part-of: haskell-datahub
 
     spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: worker
           image: haskell-datahub:dev
           imagePullPolicy: Never
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            capabilities:
+              drop:
+                - ALL
+
           args:
             - analytics-worker
 
           env:
+            - name: DATAHUB_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: DATAHUB_ENV
+
             - name: POSTGRES_HOST
               valueFrom:
                 configMapKeyRef:
@@ -129,15 +153,39 @@ spec:
         app.kubernetes.io/part-of: haskell-datahub
 
     spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: worker
           image: haskell-datahub:dev
           imagePullPolicy: Never
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            capabilities:
+              drop:
+                - ALL
+
           args:
             - sync-worker
 
           env:
+            - name: DATAHUB_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: DATAHUB_ENV
+
             - name: POSTGRES_HOST
               valueFrom:
                 configMapKeyRef:

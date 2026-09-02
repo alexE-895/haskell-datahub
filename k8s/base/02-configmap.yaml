@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/name: haskell-datahub
     app.kubernetes.io/part-of: haskell-datahub
 data:
+  DATAHUB_ENV: production
+
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
   POSTGRES_DB: datahub
