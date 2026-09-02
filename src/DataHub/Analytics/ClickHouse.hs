@@ -60,6 +60,11 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import Text.Read (readMaybe)
 
+import DataHub.Config
+  ( loadRequiredSecret
+  , loadRuntimeEnvironment
+  )
+
 import DataHub.Analytics.Types
   ( AnalyticsEvent (..)
   , EventSummary
@@ -99,10 +104,15 @@ loadClickHouseConfig = do
       . fromMaybe "datahub"
       <$> lookupEnv "CLICKHOUSE_USER"
 
+  environment <-
+    loadRuntimeEnvironment
+
   password <-
     Text.pack
-      . fromMaybe "datahub_clickhouse_dev_password"
-      <$> lookupEnv "CLICKHOUSE_PASSWORD"
+      <$> loadRequiredSecret
+            environment
+            "CLICKHOUSE_PASSWORD"
+            "datahub_clickhouse_dev_password"
 
   port <-
     case readMaybe portText of

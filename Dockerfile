@@ -60,6 +60,18 @@ COPY migrations /app/migrations
 
 COPY clickhouse-migrations /app/clickhouse-migrations
 
+RUN groupadd --system --gid 10001 datahub \
+    && useradd \
+        --system \
+        --uid 10001 \
+        --gid datahub \
+        --home-dir /app \
+        --shell /usr/sbin/nologin \
+        datahub \
+    && chown -R datahub:datahub /app
+
+USER datahub
+
 EXPOSE 8080
 
 ENTRYPOINT ["haskell-datahub"]

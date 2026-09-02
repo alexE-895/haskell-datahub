@@ -50,6 +50,11 @@ import System.Directory
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
+import DataHub.Config
+  ( loadRequiredSecret
+  , loadRuntimeEnvironment
+  )
+
 data StorageConfig = StorageConfig
   { storageHost :: Text
   , storagePort :: Int
@@ -58,7 +63,22 @@ data StorageConfig = StorageConfig
   , storageSecretKey :: Text
   , storageBucket :: Text
   }
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show StorageConfig where
+  show config =
+    "StorageConfig"
+      ++ " {storageHost = "
+      ++ show (storageHost config)
+      ++ ", storagePort = "
+      ++ show (storagePort config)
+      ++ ", storageSecure = "
+      ++ show (storageSecure config)
+      ++ ", storageAccessKey = <redacted>"
+      ++ ", storageSecretKey = <redacted>"
+      ++ ", storageBucket = "
+      ++ show (storageBucket config)
+      ++ "}"
 
 data StorageClient = StorageClient
   { storageConnection :: ConnectInfo
@@ -81,15 +101,22 @@ loadStorageConfig = do
     fromMaybe "false"
       <$> lookupEnv "S3_SECURE"
 
+  environment <-
+    loadRuntimeEnvironment
+
   accessKey <-
     Text.pack
-      . fromMaybe "datahub"
-      <$> lookupEnv "S3_ACCESS_KEY"
+      <$> loadRequiredSecret
+            environment
+            "S3_ACCESS_KEY"
+            "datahub"
 
   secretKey <-
     Text.pack
-      . fromMaybe "datahub_minio_dev_password"
-      <$> lookupEnv "S3_SECRET_KEY"
+      <$> loadRequiredSecret
+            environment
+            "S3_SECRET_KEY"
+            "datahub_minio_dev_password"
 
   bucket <-
     Text.pack
