@@ -9,6 +9,7 @@
 *.md        text eol=lf
 *.json      text eol=lf
 *.nix       text eol=lf
+*.sh        text eol=lf
 Dockerfile  text eol=lf
 .dockerignore text eol=lf
 

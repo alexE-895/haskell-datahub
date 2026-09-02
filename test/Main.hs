@@ -756,6 +756,114 @@ itemSpec app =
       responseErrorCode apiError
         `shouldBe` "ITEM_LIMIT_INVALID"
 
+    it "supports keyset pagination with afterId" $ do
+      category <-
+        createCategory
+          app
+          "ItemCursorCategory"
+          Nothing
+          Nothing
+
+      first <-
+        createItemForTest
+          app
+          (responseCategoryId category)
+          "Cursor Item 1"
+          Nothing
+          Nothing
+          Nothing
+
+      second <-
+        createItemForTest
+          app
+          (responseCategoryId category)
+          "Cursor Item 2"
+          Nothing
+          Nothing
+          Nothing
+
+      third <-
+        createItemForTest
+          app
+          (responseCategoryId category)
+          "Cursor Item 3"
+          Nothing
+          Nothing
+          Nothing
+
+      firstPageResponse <-
+        getRequestWithQuery
+          app
+          "/items"
+          [ ( "categoryId"
+            , Just
+                ( ByteString.pack
+                    (show (responseCategoryId category))
+                )
+            )
+          , ("limit", Just "2")
+          ]
+
+      simpleStatus firstPageResponse
+        `shouldBe` status200
+
+      firstPage <-
+        decodeItemList firstPageResponse
+
+      map testItemId (testListItems firstPage)
+        `shouldBe`
+          [ testItemId first
+          , testItemId second
+          ]
+
+      secondPageResponse <-
+        getRequestWithQuery
+          app
+          "/items"
+          [ ( "categoryId"
+            , Just
+                ( ByteString.pack
+                    (show (responseCategoryId category))
+                )
+            )
+          , ("limit", Just "2")
+          , ( "afterId"
+            , Just
+                ( ByteString.pack
+                    (show (testItemId second))
+                )
+            )
+          ]
+
+      simpleStatus secondPageResponse
+        `shouldBe` status200
+
+      secondPage <-
+        decodeItemList secondPageResponse
+
+      map testItemId (testListItems secondPage)
+        `shouldBe` [testItemId third]
+
+      testListTotal secondPage
+        `shouldBe` 3
+
+    it "rejects afterId with non-zero offset" $ do
+      response <-
+        getRequestWithQuery
+          app
+          "/items"
+          [ ("afterId", Just "1")
+          , ("offset", Just "1")
+          ]
+
+      simpleStatus response
+        `shouldBe` status400
+
+      apiError <-
+        decodeError response
+
+      responseErrorCode apiError
+        `shouldBe` "ITEM_PAGINATION_MODE_CONFLICT"
     it "deletes an item" $ do
       category <-
         createCategory app "ItemDeleteCategory" Nothing Nothing

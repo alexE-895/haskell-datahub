@@ -44,6 +44,8 @@ data ItemServiceError
   | ItemUpdateEmpty
   | ItemLimitInvalid
   | ItemOffsetInvalid
+  | ItemCursorInvalid
+  | ItemPaginationModeConflict
   deriving (Eq, Show)
 
 findItemById
@@ -62,8 +64,17 @@ listItems
   -> Maybe Text
   -> Maybe Int
   -> Maybe Int
+  -> Maybe ItemId
   -> IO (Either ItemServiceError ItemListResponse)
-listItems pool search categoryId source requestedLimit requestedOffset = do
+listItems
+  pool
+  search
+  categoryId
+  source
+  requestedLimit
+  requestedOffset
+  requestedAfterId = do
+
   let limitValue =
         fromMaybe 20 requestedLimit
 
@@ -76,6 +87,28 @@ listItems pool search categoryId source requestedLimit requestedOffset = do
       normalizedSource =
         normalizeOptionalText source
 
+      rawCategoryId =
+        entityIdToInt64 <$> categoryId
+
+      rawAfterId =
+        entityIdToInt64 <$> requestedAfterId
+
+      cursorInvalid =
+        case rawAfterId of
+          Nothing ->
+            False
+
+          Just cursor ->
+            cursor <= 0
+
+      paginationConflict =
+        case requestedAfterId of
+          Nothing ->
+            False
+
+          Just _ ->
+            offsetValue /= 0
+
   if limitValue < 1 || limitValue > 100
     then
       pure (Left ItemLimitInvalid)
@@ -85,30 +118,50 @@ listItems pool search categoryId source requestedLimit requestedOffset = do
         then
           pure (Left ItemOffsetInvalid)
 
-        else do
-          let listQuery =
-                ItemListQuery
-                  normalizedSearch
-                  (entityIdToInt64 <$> categoryId)
-                  normalizedSource
-                  limitValue
-                  offsetValue
+        else
+          if cursorInvalid
+            then
+              pure (Left ItemCursorInvalid)
 
-          (items, total) <-
-            Repository.listItems pool listQuery
+            else
+              if paginationConflict
+                then
+                  pure (Left ItemPaginationModeConflict)
 
-          pure
-            ( Right
-                ( ItemListResponse
-                    items
-                    total
-                    limitValue
-                    offsetValue
-                )
-            )
+                else do
+                  let effectiveOffset =
+                        case requestedAfterId of
+                          Nothing ->
+                            offsetValue
 
-createItem
-  :: DatabasePool
+                          Just _ ->
+                            0
+
+                      listQuery =
+                        ItemListQuery
+                          normalizedSearch
+                          rawCategoryId
+                          normalizedSource
+                          limitValue
+                          effectiveOffset
+                          rawAfterId
+
+                  (items, total) <-
+                    Repository.listItems
+                      pool
+                      listQuery
+
+                  pure
+                    ( Right
+                        ( ItemListResponse
+                            items
+                            total
+                            limitValue
+                            effectiveOffset
+                        )
+                    )
+
+createItem  :: DatabasePool
   -> CreateItemRequest
   -> IO (Either ItemServiceError Item)
 createItem pool request =

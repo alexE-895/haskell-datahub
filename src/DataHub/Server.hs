@@ -320,8 +320,17 @@ itemsHandler
   -> Maybe Text
   -> Maybe Int
   -> Maybe Int
+  -> Maybe ItemId
   -> Handler ItemListResponse
-itemsHandler databasePool search categoryId source limit offset = do
+itemsHandler
+  databasePool
+  search
+  categoryId
+  source
+  limit
+  offset
+  afterId = do
+
   result <-
     liftIO
       ( ItemService.listItems
@@ -331,6 +340,7 @@ itemsHandler databasePool search categoryId source limit offset = do
           source
           limit
           offset
+          afterId
       )
 
   case result of
@@ -340,8 +350,7 @@ itemsHandler databasePool search categoryId source limit offset = do
     Left serviceError ->
       handleItemError serviceError
 
-itemByIdHandler
-  :: DatabasePool
+itemByIdHandler  :: DatabasePool
   -> ItemId
   -> Handler Item
 itemByIdHandler databasePool itemId = do
@@ -484,6 +493,18 @@ handleItemError serviceError =
       throwApiError err400
         "ITEM_OFFSET_INVALID"
         "Offset must be zero or greater"
+        Nothing
+
+    ItemService.ItemCursorInvalid ->
+      throwApiError err400
+        "ITEM_CURSOR_INVALID"
+        "afterId must be greater than zero"
+        Nothing
+
+    ItemService.ItemPaginationModeConflict ->
+      throwApiError err400
+        "ITEM_PAGINATION_MODE_CONFLICT"
+        "afterId cannot be combined with a non-zero offset"
         Nothing
 
 createGitHubSyncHandler

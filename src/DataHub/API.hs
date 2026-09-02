@@ -88,6 +88,7 @@ type API =
         :> QueryParam "source" Text
         :> QueryParam "limit" Int
         :> QueryParam "offset" Int
+        :> QueryParam "afterId" ItemId
         :> Get '[JSON] ItemListResponse
 
   :<|> "items"
