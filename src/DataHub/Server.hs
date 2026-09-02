@@ -64,6 +64,10 @@ import DataHub.Database
   ( DatabasePool
   , checkDatabase
   )
+import DataHub.Domain.Id
+  ( CategoryId
+  , ItemId
+  )
 import DataHub.Item.Types
   ( CreateItemRequest
   , Item
@@ -182,7 +186,7 @@ categoriesHandler databasePool =
 
 categoryByIdHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> Handler Category
 categoryByIdHandler databasePool categoryId = do
   result <-
@@ -213,7 +217,7 @@ createCategoryHandler databasePool request = do
 
 updateCategoryHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> UpdateCategoryRequest
   -> Handler Category
 updateCategoryHandler databasePool categoryId request = do
@@ -225,7 +229,7 @@ updateCategoryHandler databasePool categoryId request = do
 
 deleteCategoryHandler
   :: DatabasePool
-  -> Int64
+  -> CategoryId
   -> Handler NoContent
 deleteCategoryHandler databasePool categoryId = do
   result <-
@@ -312,12 +316,21 @@ handleCategoryError serviceError =
 itemsHandler
   :: DatabasePool
   -> Maybe Text
-  -> Maybe Int64
+  -> Maybe CategoryId
   -> Maybe Text
   -> Maybe Int
   -> Maybe Int
+  -> Maybe ItemId
   -> Handler ItemListResponse
-itemsHandler databasePool search categoryId source limit offset = do
+itemsHandler
+  databasePool
+  search
+  categoryId
+  source
+  limit
+  offset
+  afterId = do
+
   result <-
     liftIO
       ( ItemService.listItems
@@ -327,6 +340,7 @@ itemsHandler databasePool search categoryId source limit offset = do
           source
           limit
           offset
+          afterId
       )
 
   case result of
@@ -336,9 +350,8 @@ itemsHandler databasePool search categoryId source limit offset = do
     Left serviceError ->
       handleItemError serviceError
 
-itemByIdHandler
-  :: DatabasePool
-  -> Int64
+itemByIdHandler  :: DatabasePool
+  -> ItemId
   -> Handler Item
 itemByIdHandler databasePool itemId = do
   result <-
@@ -368,7 +381,7 @@ createItemHandler databasePool request = do
 
 updateItemHandler
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> UpdateItemRequest
   -> Handler Item
 updateItemHandler databasePool itemId request = do
@@ -380,7 +393,7 @@ updateItemHandler databasePool itemId request = do
 
 deleteItemHandler
   :: DatabasePool
-  -> Int64
+  -> ItemId
   -> Handler NoContent
 deleteItemHandler databasePool itemId = do
   result <-
@@ -480,6 +493,18 @@ handleItemError serviceError =
       throwApiError err400
         "ITEM_OFFSET_INVALID"
         "Offset must be zero or greater"
+        Nothing
+
+    ItemService.ItemCursorInvalid ->
+      throwApiError err400
+        "ITEM_CURSOR_INVALID"
+        "afterId must be greater than zero"
+        Nothing
+
+    ItemService.ItemPaginationModeConflict ->
+      throwApiError err400
+        "ITEM_PAGINATION_MODE_CONFLICT"
+        "afterId cannot be combined with a non-zero offset"
         Nothing
 
 createGitHubSyncHandler

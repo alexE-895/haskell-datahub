@@ -1,0 +1,373 @@
+# ============================================================
+# API AVAILABILITY DURING VOLUNTARY DISRUPTIONS
+# ============================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: datahub-api
+  namespace: datahub
+
+  labels:
+    app.kubernetes.io/name: datahub-api
+    app.kubernetes.io/part-of: haskell-datahub
+
+spec:
+  minAvailable: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-api
+
+---
+# ============================================================
+# DEFAULT DENY
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: datahub
+
+spec:
+  podSelector: {}
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ============================================================
+# DNS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: datahub
+
+spec:
+  podSelector: {}
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+
+      ports:
+        - protocol: UDP
+          port: 53
+
+        - protocol: TCP
+          port: 53
+
+---
+# ============================================================
+# API INGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: datahub-api-ingress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-api
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - namespaceSelector: {}
+
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ============================================================
+# POSTGRESQL INGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - datahub-api
+                  - datahub-analytics-worker
+                  - datahub-sync-worker
+                  - datahub-postgres-migrate
+
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ============================================================
+# CLICKHOUSE INGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clickhouse-ingress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: clickhouse
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - datahub-api
+                  - datahub-analytics-worker
+                  - datahub-clickhouse-migrate
+
+      ports:
+        - protocol: TCP
+          port: 8123
+
+---
+# ============================================================
+# MINIO INGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-ingress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: datahub-api
+
+      ports:
+        - protocol: TCP
+          port: 9000
+
+---
+# ============================================================
+# API EGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: datahub-api-egress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-api
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clickhouse
+
+      ports:
+        - protocol: TCP
+          port: 8123
+
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+
+      ports:
+        - protocol: TCP
+          port: 9000
+
+---
+# ============================================================
+# ANALYTICS WORKER EGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: analytics-worker-egress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-analytics-worker
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clickhouse
+
+      ports:
+        - protocol: TCP
+          port: 8123
+
+---
+# ============================================================
+# SYNC WORKER EGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sync-worker-egress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-sync-worker
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# ============================================================
+# POSTGRES MIGRATION EGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-migrate-egress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-postgres-migrate
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ============================================================
+# CLICKHOUSE MIGRATION EGRESS
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clickhouse-migrate-egress
+  namespace: datahub
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: datahub-clickhouse-migrate
+
+  policyTypes:
+    - Egress
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clickhouse
+
+      ports:
+        - protocol: TCP
+          port: 8123

@@ -125,6 +125,7 @@ data ItemListQuery = ItemListQuery
   , itemQuerySource :: Maybe Text
   , itemQueryLimit :: Int
   , itemQueryOffset :: Int
+  , itemQueryAfterId :: Maybe Int64
   }
 
 data ItemListResponse = ItemListResponse

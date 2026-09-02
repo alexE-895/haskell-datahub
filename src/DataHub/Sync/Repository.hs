@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module DataHub.Sync.Repository
@@ -40,6 +41,14 @@ import DataHub.Analytics.Outbox
 import DataHub.Database (DatabasePool)
 import DataHub.External.GitHub
   ( GitHubRepository (..)
+  )
+import DataHub.Sync.State
+  ( SyncJobIn
+  , SyncState (Running)
+  , SyncTransition (..)
+  , claimedRunningJob
+  , syncJobValue
+  , transitionTargetStatus
   )
 import DataHub.Sync.Types
   ( SyncJob (..)
@@ -140,7 +149,7 @@ claimSyncJobs
   :: DatabasePool
   -> Text
   -> Int
-  -> IO [SyncJob]
+  -> IO [SyncJobIn 'Running]
 claimSyncJobs pool workerId batchSize =
   withResource pool $ \connection ->
     withTransaction connection $ do
@@ -153,26 +162,30 @@ claimSyncJobs pool workerId batchSize =
           :: IO [SyncJobRow]
 
       pure
-        (map unSyncJobRow rows)
+        (map (claimedRunningJob . unSyncJobRow) rows)
 
 markSyncJobFailed
   :: DatabasePool
   -> Text
-  -> Int64
+  -> SyncJobIn 'Running
   -> Text
   -> IO ()
-markSyncJobFailed pool workerId jobId errorMessage =
+markSyncJobFailed pool workerId runningJob errorMessage =
   withResource pool $ \connection -> do
 
-    let safeError =
+    let job =
+          syncJobValue runningJob
+
+        safeError =
           Text.take 4000 errorMessage
 
     _ <-
       execute
         connection
-        "UPDATE external_sync_jobs SET status = 'failed', attempts = attempts + 1, last_error = ?, next_attempt_at = NOW() + (LEAST(300, CAST(power(2, LEAST(attempts + 1, 8)) AS integer)) * INTERVAL '1 second'), locked_at = NULL, locked_by = NULL WHERE id = ? AND locked_by = ?"
-        ( safeError
-        , jobId
+        "UPDATE external_sync_jobs SET status = ?, attempts = attempts + 1, last_error = ?, next_attempt_at = NOW() + (LEAST(300, CAST(power(2, LEAST(attempts + 1, 8)) AS integer)) * INTERVAL '1 second'), locked_at = NULL, locked_by = NULL WHERE id = ? AND locked_by = ?"
+        ( transitionTargetStatus FailRunning
+        , safeError
+        , syncJobId job
         , workerId
         )
 
@@ -181,12 +194,15 @@ markSyncJobFailed pool workerId jobId errorMessage =
 completeGitHubSyncJob
   :: DatabasePool
   -> Text
-  -> SyncJob
+  -> SyncJobIn 'Running
   -> [GitHubRepository]
   -> IO Int
-completeGitHubSyncJob pool workerId job repositories =
+completeGitHubSyncJob pool workerId runningJob repositories =
   withResource pool $ \connection ->
     withTransaction connection $ do
+
+      let job =
+            syncJobValue runningJob
 
       itemIds <-
         forM repositories $ \repository ->
@@ -201,8 +217,9 @@ completeGitHubSyncJob pool workerId job repositories =
       affected <-
         execute
           connection
-          "UPDATE external_sync_jobs SET status = 'completed', result_count = ?, completed_at = NOW(), last_error = NULL, locked_at = NULL, locked_by = NULL WHERE id = ? AND locked_by = ? AND status = 'running'"
-          ( resultCount
+          "UPDATE external_sync_jobs SET status = ?, result_count = ?, completed_at = NOW(), last_error = NULL, locked_at = NULL, locked_by = NULL WHERE id = ? AND locked_by = ? AND status = 'running'"
+          ( transitionTargetStatus CompleteRunning
+          , resultCount
           , syncJobId job
           , workerId
           )

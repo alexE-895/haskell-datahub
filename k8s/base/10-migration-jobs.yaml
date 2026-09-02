@@ -18,6 +18,12 @@ spec:
 
     spec:
       restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
 
       initContainers:
         - name: wait-postgres
@@ -72,10 +78,27 @@ spec:
           image: haskell-datahub:dev
           imagePullPolicy: Never
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            capabilities:
+              drop:
+                - ALL
+
           args:
             - migrate
 
           env:
+            - name: DATAHUB_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: DATAHUB_ENV
+
             - name: POSTGRES_HOST
               valueFrom:
                 configMapKeyRef:
@@ -127,6 +150,12 @@ spec:
 
     spec:
       restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
 
       initContainers:
         - name: wait-clickhouse
@@ -183,10 +212,27 @@ spec:
           image: haskell-datahub:dev
           imagePullPolicy: Never
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+
+            capabilities:
+              drop:
+                - ALL
+
           args:
             - clickhouse-migrate
 
           env:
+            - name: DATAHUB_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: datahub-config
+                  key: DATAHUB_ENV
+
             - name: CLICKHOUSE_HOST
               valueFrom:
                 configMapKeyRef:

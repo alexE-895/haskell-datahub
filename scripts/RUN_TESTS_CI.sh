@@ -2,6 +2,26 @@
 
 set -euo pipefail
 
+# ============================================================
+# DATAHUB LOCAL CI ISOLATION
+#
+# The integration suite runs in its own Compose project,
+# on dedicated host ports and with dedicated Docker volumes.
+# cleanup "down -v" therefore removes CI resources only.
+# ============================================================
+
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-haskell-datahub-ci}"
+
+export POSTGRES_PUBLISH_PORT="${POSTGRES_PUBLISH_PORT:-15432}"
+
+export CLICKHOUSE_HTTP_PUBLISH_PORT="${CLICKHOUSE_HTTP_PUBLISH_PORT:-18123}"
+export CLICKHOUSE_NATIVE_PUBLISH_PORT="${CLICKHOUSE_NATIVE_PUBLISH_PORT:-19000}"
+
+export MINIO_API_PUBLISH_PORT="${MINIO_API_PUBLISH_PORT:-19100}"
+export MINIO_CONSOLE_PUBLISH_PORT="${MINIO_CONSOLE_PUBLISH_PORT:-19101}"
+
+export MINIO_CONTAINER_NAME="${MINIO_CONTAINER_NAME:-haskell-datahub-ci-minio-1}"
+
 echo
 echo "============================================================"
 echo " DATAHUB FULL LINUX INTEGRATION TEST PIPELINE"
@@ -32,6 +52,31 @@ CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-ci_clickhouse_password}"
 S3_ACCESS_KEY="${S3_ACCESS_KEY:-datahub}"
 S3_SECRET_KEY="${S3_SECRET_KEY:-ci_minio_password}"
 S3_BUCKET="${S3_BUCKET:-datahub-files-test}"
+
+# ============================================================
+# INFRASTRUCTURE ENVIRONMENT
+#
+# Export credentials BEFORE docker compose starts.
+# This guarantees that the containers are created with the
+# same credentials used by readiness checks and integration
+# tests below.
+# ============================================================
+
+export POSTGRES_DB="$BASE_POSTGRES_DB"
+export POSTGRES_USER
+export POSTGRES_PASSWORD
+export POSTGRES_PORT="$POSTGRES_PUBLISH_PORT"
+
+export CLICKHOUSE_DB="$BASE_CLICKHOUSE_DB"
+export CLICKHOUSE_USER
+export CLICKHOUSE_PASSWORD
+
+export MINIO_ROOT_USER="$S3_ACCESS_KEY"
+export MINIO_ROOT_PASSWORD="$S3_SECRET_KEY"
+
+export S3_ACCESS_KEY
+export S3_SECRET_KEY
+export S3_BUCKET
 
 cleanup() {
 
@@ -202,7 +247,7 @@ for attempt in $(seq 1 60); do
 
   if curl \
       -fsS \
-      "http://127.0.0.1:9100/minio/health/live" \
+      "http://127.0.0.1:${MINIO_API_PUBLISH_PORT}/minio/health/live" \
       >/dev/null
   then
 
@@ -274,19 +319,19 @@ echo "ClickHouse test DB: ${CLICKHOUSE_TEST_DB}"
 # ============================================================
 
 export POSTGRES_HOST="127.0.0.1"
-export POSTGRES_PORT="5432"
+export POSTGRES_PORT="$POSTGRES_PUBLISH_PORT"
 export POSTGRES_DB="$POSTGRES_TEST_DB"
 export POSTGRES_USER="$POSTGRES_USER"
 export POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
 
 export CLICKHOUSE_HOST="127.0.0.1"
-export CLICKHOUSE_PORT="8123"
+export CLICKHOUSE_PORT="$CLICKHOUSE_HTTP_PUBLISH_PORT"
 export CLICKHOUSE_DB="$CLICKHOUSE_TEST_DB"
 export CLICKHOUSE_USER="$CLICKHOUSE_USER"
 export CLICKHOUSE_PASSWORD="$CLICKHOUSE_PASSWORD"
 
 export S3_HOST="127.0.0.1"
-export S3_PORT="9100"
+export S3_PORT="$MINIO_API_PUBLISH_PORT"
 export S3_SECURE="false"
 export S3_ACCESS_KEY="$S3_ACCESS_KEY"
 export S3_SECRET_KEY="$S3_SECRET_KEY"

@@ -62,7 +62,9 @@ library
     -- Modules exported by the library.
     exposed-modules:
         DataHub.App
+        DataHub.Config
         DataHub.Database
+        DataHub.Domain.Id
         DataHub.Migrations
         DataHub.Repository.Category
         DataHub.Service.Category
@@ -85,6 +87,7 @@ library
         DataHub.Sync.Service
         DataHub.Sync.Repository
         DataHub.Sync.Types
+        DataHub.Sync.State
         DataHub.External.GitHub
         DataHub.Analytics.Worker
         DataHub.Analytics.Outbox
@@ -105,6 +108,7 @@ library
         http-client-tls,
         time,
         http-types,
+        http-api-data,
         bytestring,
         base ^>=4.20.2.0,
         aeson,
@@ -167,6 +171,7 @@ test-suite haskell-datahub-test
         haskell-datahub,
         hspec,
         http-types,
+        http-api-data,
         text,
         wai,
         wai-extra

@@ -30,6 +30,10 @@ import DataHub.Analytics.Types
   ( EventSummary
   , ItemSourceStat
   )
+import DataHub.Domain.Id
+  ( CategoryId
+  , ItemId
+  )
 import DataHub.Item.Types
   ( CreateItemRequest
   , Item
@@ -62,7 +66,7 @@ type API =
         :> Get '[JSON] [Category]
 
   :<|> "categories"
-        :> Capture "categoryId" Int64
+        :> Capture "categoryId" CategoryId
         :> Get '[JSON] Category
 
   :<|> "categories"
@@ -70,24 +74,25 @@ type API =
         :> PostCreated '[JSON] Category
 
   :<|> "categories"
-        :> Capture "categoryId" Int64
+        :> Capture "categoryId" CategoryId
         :> ReqBody '[JSON] UpdateCategoryRequest
         :> Patch '[JSON] Category
 
   :<|> "categories"
-        :> Capture "categoryId" Int64
+        :> Capture "categoryId" CategoryId
         :> DeleteNoContent
 
   :<|> "items"
         :> QueryParam "search" Text
-        :> QueryParam "categoryId" Int64
+        :> QueryParam "categoryId" CategoryId
         :> QueryParam "source" Text
         :> QueryParam "limit" Int
         :> QueryParam "offset" Int
+        :> QueryParam "afterId" ItemId
         :> Get '[JSON] ItemListResponse
 
   :<|> "items"
-        :> Capture "itemId" Int64
+        :> Capture "itemId" ItemId
         :> Get '[JSON] Item
 
   :<|> "items"
@@ -95,12 +100,12 @@ type API =
         :> PostCreated '[JSON] Item
 
   :<|> "items"
-        :> Capture "itemId" Int64
+        :> Capture "itemId" ItemId
         :> ReqBody '[JSON] UpdateItemRequest
         :> Patch '[JSON] Item
 
   :<|> "items"
-        :> Capture "itemId" Int64
+        :> Capture "itemId" ItemId
         :> DeleteNoContent
 
   :<|> "sync"

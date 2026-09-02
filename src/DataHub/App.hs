@@ -19,33 +19,40 @@ import DataHub.Analytics.ClickHouse
   , loadClickHouseConfig
   , runClickHouseMigrations
   )
+
 import DataHub.Analytics.Worker
   ( runAnalyticsWorkerForever
   , runAnalyticsWorkerOnce
   )
+
 import DataHub.Database
   ( DatabasePool
   , checkDatabase
-  , createDatabasePool
   , loadDatabaseConfig
+  , withDatabasePool
   )
+
 import DataHub.External.GitHub
   ( GitHubClient
   , createGitHubClient
   , loadGitHubConfig
   )
+
 import DataHub.Migrations
   ( runMigrations
   )
+
 import DataHub.Server
   ( runServer
   )
+
 import DataHub.Storage.Minio
   ( createStorageClient
   , ensureStorageBucket
   , loadStorageConfig
   , runStorageSmoke
   )
+
 import DataHub.Sync.Worker
   ( runSyncWorkerForever
   , runSyncWorkerOnce
@@ -53,69 +60,66 @@ import DataHub.Sync.Worker
 
 runApp :: IO ()
 runApp = do
-
   databaseConfig <-
     loadDatabaseConfig
 
-  databasePool <-
-    createDatabasePool databaseConfig
+  withDatabasePool databaseConfig $ \databasePool -> do
 
-  databaseReady <-
-    checkDatabase databasePool
+    databaseReady <-
+      checkDatabase databasePool
 
-  if databaseReady
-    then
-      putStrLn "PostgreSQL connection pool: OK"
-    else
-      putStrLn "PostgreSQL connection pool: FAILED"
+    unless databaseReady $
+      ioError
+        (userError "PostgreSQL is unavailable during startup")
 
-  clickHouseConfig <-
-    loadClickHouseConfig
+    putStrLn
+      "PostgreSQL connection pool: OK"
 
-  clickHouse <-
-    createClickHouseClient clickHouseConfig
+    clickHouseConfig <-
+      loadClickHouseConfig
 
-  putStrLn
-    "ClickHouse analytics client: configured"
+    clickHouse <-
+      createClickHouseClient clickHouseConfig
 
-  storageConfig <-
-    loadStorageConfig
+    putStrLn
+      "ClickHouse analytics client: configured"
 
-  let storageClient =
-        createStorageClient storageConfig
+    storageConfig <-
+      loadStorageConfig
 
-  ensureStorageBucket storageClient
+    let storageClient =
+          createStorageClient storageConfig
 
-  putStrLn
-    "S3-compatible object storage: ready"
+    ensureStorageBucket storageClient
 
-  runServer
-    databasePool
-    clickHouse
-    storageClient
+    putStrLn
+      "S3-compatible object storage: ready"
+
+    runServer
+      databasePool
+      clickHouse
+      storageClient
+
 runMigrationsApp :: IO ()
 runMigrationsApp = do
-
   databaseConfig <-
     loadDatabaseConfig
 
-  databasePool <-
-    createDatabasePool databaseConfig
+  withDatabasePool databaseConfig $ \databasePool -> do
 
-  databaseReady <-
-    checkDatabase databasePool
+    databaseReady <-
+      checkDatabase databasePool
 
-  unless databaseReady $
-    ioError
-      (userError "PostgreSQL is unavailable")
+    unless databaseReady $
+      ioError
+        (userError "PostgreSQL is unavailable")
 
-  runMigrations
-    databasePool
-    "migrations"
+    runMigrations
+      databasePool
+      "migrations"
 
 runClickHouseMigrationsApp :: IO ()
 runClickHouseMigrationsApp = do
-
   clickHouseConfig <-
     loadClickHouseConfig
 
@@ -129,68 +133,53 @@ runClickHouseMigrationsApp = do
     ioError
       (userError "ClickHouse is unavailable")
 
-  putStrLn "ClickHouse connection: OK"
+  putStrLn
+    "ClickHouse connection: OK"
 
   runClickHouseMigrations
     clickHouse
     "clickhouse-migrations"
 
 runAnalyticsWorkerOnceApp :: IO ()
-runAnalyticsWorkerOnceApp = do
+runAnalyticsWorkerOnceApp =
+  withAnalyticsDependencies $ \databasePool clickHouse -> do
 
-  (databasePool, clickHouse) <-
-    loadAnalyticsDependencies
+    claimed <-
+      runAnalyticsWorkerOnce
+        databasePool
+        clickHouse
 
-  claimed <-
-    runAnalyticsWorkerOnce
-      databasePool
-      clickHouse
-
-  putStrLn
-    ( "Analytics flush complete. Claimed="
-        ++ show claimed
-    )
+    putStrLn
+      ( "Analytics flush complete. Claimed="
+          ++ show claimed
+      )
 
 runAnalyticsWorkerForeverApp :: IO ()
-runAnalyticsWorkerForeverApp = do
-
-  (databasePool, clickHouse) <-
-    loadAnalyticsDependencies
-
-  runAnalyticsWorkerForever
-    databasePool
-    clickHouse
+runAnalyticsWorkerForeverApp =
+  withAnalyticsDependencies
+    runAnalyticsWorkerForever
 
 runSyncWorkerOnceApp :: IO ()
-runSyncWorkerOnceApp = do
+runSyncWorkerOnceApp =
+  withSyncDependencies $ \databasePool gitHub -> do
 
-  (databasePool, gitHub) <-
-    loadSyncDependencies
+    claimed <-
+      runSyncWorkerOnce
+        databasePool
+        gitHub
 
-  claimed <-
-    runSyncWorkerOnce
-      databasePool
-      gitHub
-
-  putStrLn
-    ( "Sync flush complete. Claimed="
-        ++ show claimed
-    )
+    putStrLn
+      ( "Sync flush complete. Claimed="
+          ++ show claimed
+      )
 
 runSyncWorkerForeverApp :: IO ()
-runSyncWorkerForeverApp = do
-
-  (databasePool, gitHub) <-
-    loadSyncDependencies
-
-  runSyncWorkerForever
-    databasePool
-    gitHub
-
+runSyncWorkerForeverApp =
+  withSyncDependencies
+    runSyncWorkerForever
 
 runStorageInitApp :: IO ()
 runStorageInitApp = do
-
   storageConfig <-
     loadStorageConfig
 
@@ -202,61 +191,62 @@ runStorageInitApp = do
 runStorageSmokeApp :: IO ()
 runStorageSmokeApp =
   runStorageSmoke
-loadAnalyticsDependencies
-  :: IO (DatabasePool, ClickHouseClient)
-loadAnalyticsDependencies = do
 
+withAnalyticsDependencies
+  :: (DatabasePool -> ClickHouseClient -> IO a)
+  -> IO a
+withAnalyticsDependencies action = do
   databaseConfig <-
     loadDatabaseConfig
 
-  databasePool <-
-    createDatabasePool databaseConfig
+  withDatabasePool databaseConfig $ \databasePool -> do
 
-  databaseReady <-
-    checkDatabase databasePool
+    databaseReady <-
+      checkDatabase databasePool
 
-  unless databaseReady $
-    ioError
-      (userError "PostgreSQL is unavailable")
+    unless databaseReady $
+      ioError
+        (userError "PostgreSQL is unavailable")
 
-  clickHouseConfig <-
-    loadClickHouseConfig
+    clickHouseConfig <-
+      loadClickHouseConfig
 
-  clickHouse <-
-    createClickHouseClient clickHouseConfig
+    clickHouse <-
+      createClickHouseClient clickHouseConfig
 
-  clickHouseReady <-
-    checkClickHouse clickHouse
+    clickHouseReady <-
+      checkClickHouse clickHouse
 
-  unless clickHouseReady $
-    ioError
-      (userError "ClickHouse is unavailable")
+    unless clickHouseReady $
+      ioError
+        (userError "ClickHouse is unavailable")
 
-  pure
-    (databasePool, clickHouse)
+    action
+      databasePool
+      clickHouse
 
-loadSyncDependencies
-  :: IO (DatabasePool, GitHubClient)
-loadSyncDependencies = do
-
+withSyncDependencies
+  :: (DatabasePool -> GitHubClient -> IO a)
+  -> IO a
+withSyncDependencies action = do
   databaseConfig <-
     loadDatabaseConfig
 
-  databasePool <-
-    createDatabasePool databaseConfig
+  withDatabasePool databaseConfig $ \databasePool -> do
 
-  databaseReady <-
-    checkDatabase databasePool
+    databaseReady <-
+      checkDatabase databasePool
 
-  unless databaseReady $
-    ioError
-      (userError "PostgreSQL is unavailable")
+    unless databaseReady $
+      ioError
+        (userError "PostgreSQL is unavailable")
 
-  gitHubConfig <-
-    loadGitHubConfig
+    gitHubConfig <-
+      loadGitHubConfig
 
-  gitHub <-
-    createGitHubClient gitHubConfig
+    gitHub <-
+      createGitHubClient gitHubConfig
 
-  pure
-    (databasePool, gitHub)
+    action
+      databasePool
+      gitHub

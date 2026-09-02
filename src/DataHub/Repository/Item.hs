@@ -106,7 +106,7 @@ listItems pool listQuery =
     rows <-
       query
         connection
-        "SELECT id, category_id, name, description, source, external_id FROM items WHERE (?::text IS NULL OR name ILIKE '%' || ?::text || '%' OR COALESCE(description, '') ILIKE '%' || ?::text || '%') AND (?::bigint IS NULL OR category_id = ?::bigint) AND (?::text IS NULL OR source = ?::text) ORDER BY id LIMIT ? OFFSET ?"
+        "SELECT id, category_id, name, description, source, external_id FROM items WHERE (?::text IS NULL OR name ILIKE '%' || ?::text || '%' OR COALESCE(description, '') ILIKE '%' || ?::text || '%') AND (?::bigint IS NULL OR category_id = ?::bigint) AND (?::text IS NULL OR source = ?::text) AND (?::bigint IS NULL OR id > ?::bigint) ORDER BY id LIMIT ? OFFSET ?"
         ( itemQuerySearch listQuery
         , itemQuerySearch listQuery
         , itemQuerySearch listQuery
@@ -114,6 +114,8 @@ listItems pool listQuery =
         , itemQueryCategoryId listQuery
         , itemQuerySource listQuery
         , itemQuerySource listQuery
+        , itemQueryAfterId listQuery
+        , itemQueryAfterId listQuery
         , itemQueryLimit listQuery
         , itemQueryOffset listQuery
         )

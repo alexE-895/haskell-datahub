@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module DataHub.Sync.Worker
@@ -33,6 +34,11 @@ import DataHub.Sync.Repository
   ( claimSyncJobs
   , completeGitHubSyncJob
   , markSyncJobFailed
+  )
+import DataHub.Sync.State
+  ( SyncJobIn
+  , SyncState (Running)
+  , syncJobValue
   )
 import DataHub.Sync.Types
   ( SyncJob (..)
@@ -108,9 +114,12 @@ processJob
   :: DatabasePool
   -> GitHubClient
   -> Text
-  -> SyncJob
+  -> SyncJobIn 'Running
   -> IO ()
-processJob pool gitHub workerId job = do
+processJob pool gitHub workerId runningJob = do
+
+  let job =
+        syncJobValue runningJob
 
   putStrLn
     ( "Sync job started: "
@@ -143,7 +152,7 @@ processJob pool gitHub workerId job = do
           ( completeGitHubSyncJob
               pool
               workerId
-              job
+              runningJob
               repositories
           )
           :: IO
@@ -156,7 +165,7 @@ processJob pool gitHub workerId job = do
         Right resultCount ->
           putStrLn
             ( "Sync job completed: "
-                ++ show (syncJobId job)
+                ++ show (syncJobId (syncJobValue runningJob))
                 ++ " items="
                 ++ show resultCount
             )
@@ -171,12 +180,12 @@ processJob pool gitHub workerId job = do
       markSyncJobFailed
         pool
         workerId
-        (syncJobId job)
+        runningJob
         errorText
 
       putStrLn
         ( "Sync job failed: "
-            ++ show (syncJobId job)
+            ++ show (syncJobId (syncJobValue runningJob))
             ++ " "
             ++ displayException exception
         )
