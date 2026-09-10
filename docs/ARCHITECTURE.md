@@ -103,7 +103,10 @@ Schema evolution uses ordered SQL migrations. The project includes relational co
 
 Business writes do not depend directly on ClickHouse availability. Analytics uses the transactional outbox pattern: a business transaction writes an event into PostgreSQL, then a worker later delivers it to ClickHouse. This makes analytics eventually consistent while keeping the core API available during ClickHouse outages.
 
-Replay is idempotent through `event_id`.
+Sequential replay skips `event_id` values already visible in ClickHouse. A row
+lock fences ownership during each send and acknowledgement. Delivery remains
+at-least-once; ambiguous remote insert outcomes are described in
+[Engineering Trade-offs](TRADEOFFS.md#delivery-guarantees).
 
 ## ClickHouse
 
