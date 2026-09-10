@@ -39,6 +39,15 @@ Transactional analytics pipeline:
 5. Processed state is persisted.
 6. Replay is idempotent by `event_id`.
 
+```mermaid
+graph LR
+    Client[Client] -->|HTTP| API[Servant API]
+    API -->|Business transaction| PG[(PostgreSQL)]
+    API -->|Outbox event| PG
+    Worker[Analytics Worker] -->|Claim pending events| PG
+    Worker -->|Idempotent delivery| CH[(ClickHouse)]
+```
+
 ClickHouse uses MergeTree, monthly partitioning, LowCardinality columns, 365-day TTL and an event-id Bloom data-skipping index.
 
 ### External synchronization
@@ -59,6 +68,24 @@ The API provides:
 - structured HTTP request logs
 - request IDs
 - request duration and status tracking
+
+<details>
+<summary>Example structured HTTP log</summary>
+
+```json
+{
+  "timestamp": "2026-09-02T16:05:46Z",
+  "level": "info",
+  "message": "http_request",
+  "requestId": "req-42",
+  "method": "GET",
+  "path": "/ready",
+  "status": 200,
+  "durationMs": 4.7
+}
+```
+
+</details>
 
 ## REST API
 
