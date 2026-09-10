@@ -72,6 +72,7 @@ library
         DataHub.Repository.Item
         DataHub.Item.Types
         DataHub.API
+        DataHub.RequestLimits
 
         DataHub.Observability.RequestLog
         DataHub.Observability.Metrics
@@ -122,6 +123,7 @@ library
         text,
         transformers,
         wai,
+        wai-extra >=3.1.1,
         warp
 
     -- Directories containing source files.
@@ -157,6 +159,7 @@ executable haskell-datahub
     default-language: GHC2024
 
 test-suite haskell-datahub-test
+    other-modules: OutboxSpec
     type: exitcode-stdio-1.0
     hs-source-dirs:
         test
@@ -164,6 +167,9 @@ test-suite haskell-datahub-test
     ghc-options: -threaded -rtsopts
     default-language: GHC2024
     build-depends:
+        async,
+        postgresql-simple,
+        resource-pool,
         warp,
         aeson,
         base ^>=4.20.2.0,
@@ -173,5 +179,20 @@ test-suite haskell-datahub-test
         http-types,
         http-api-data,
         text,
+        wai,
+        wai-extra
+
+test-suite middleware-tests
+    type: exitcode-stdio-1.0
+    hs-source-dirs: test-unit
+    main-is: Main.hs
+    default-language: GHC2024
+    ghc-options: -threaded -rtsopts
+    build-depends:
+        base ^>=4.20.2.0,
+        bytestring,
+        haskell-datahub,
+        hspec,
+        http-types,
         wai,
         wai-extra

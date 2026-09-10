@@ -15,6 +15,7 @@ import Control.Exception
   , try
   )
 import Control.Monad (forM_)
+import System.Timeout (timeout)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Time
@@ -30,7 +31,7 @@ import DataHub.Analytics.ClickHouse
 import DataHub.Analytics.Outbox
   ( claimPendingEvents
   , markEventFailed
-  , markEventProcessed
+  , deliverClaimedEvent
   )
 import DataHub.Analytics.Types
   ( AnalyticsEvent (..)
@@ -109,18 +110,18 @@ processEvent
 processEvent pool clickHouse workerId event = do
   result <-
     try
-      (insertAnalyticsEvent clickHouse event)
-      :: IO (Either SomeException ())
+      (deliverClaimedEvent pool workerId (analyticsEventId event)
+        (do
+          sent <- timeout 30000000 (insertAnalyticsEvent clickHouse event)
+          case sent of
+            Just () -> pure ()
+            Nothing -> ioError (userError "ClickHouse delivery exceeded 30 seconds")))
+      :: IO (Either SomeException Bool)
 
   case result of
-    Right () -> do
-      markEventProcessed
-        pool
-        workerId
-        (analyticsEventId event)
-
+    Right delivered -> do
       putStrLn
-        ( "Analytics event processed: "
+        ( (if delivered then "Analytics event processed: " else "Analytics event claim lost: ")
             ++ show (analyticsEventId event)
         )
 

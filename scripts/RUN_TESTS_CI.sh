@@ -389,6 +389,7 @@ echo " HASKELL INTEGRATION TEST SUITE"
 echo "============================================================"
 
 cabal test \
+  middleware-tests \
   haskell-datahub-test \
   --test-show-details=direct
 
@@ -448,15 +449,15 @@ if [ "$CLICKHOUSE_COUNT" -lt 1 ]; then
 fi
 
 # ============================================================
-# CRASH / REPLAY IDEMPOTENCY
+# SEQUENTIAL REPLAY AFTER A SIMULATED LOST ACKNOWLEDGEMENT
 # ============================================================
 
 echo
 echo "============================================================"
-echo " OUTBOX CRASH / REPLAY IDEMPOTENCY"
+echo " OUTBOX SEQUENTIAL REPLAY"
 echo "============================================================"
 
-echo "Simulating worker crash after ClickHouse insert..."
+echo "Resetting acknowledgements after completed inserts (not a process-kill test)..."
 
 compose exec -T postgres \
   psql \
@@ -556,6 +557,6 @@ echo "ClickHouse migrations      : PASS"
 echo "Haskell integration tests  : PASS"
 echo "Transactional outbox       : PASS"
 echo "ClickHouse analytics       : PASS"
-echo "Replay idempotency         : PASS"
+echo "Sequential replay          : PASS"
 echo "Pending outbox             : 0"
 echo "============================================================"

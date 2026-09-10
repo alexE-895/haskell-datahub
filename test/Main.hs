@@ -100,6 +100,7 @@ import DataHub.Storage.Minio
   , loadStorageConfig
   )
 import DataHub.Server (application)
+import OutboxSpec (outboxSpec)
 
 data CategoryResponse = CategoryResponse
   { responseCategoryId :: Int64
@@ -206,6 +207,7 @@ main = do
 
 
   hspec $ do
+    outboxSpec databasePool
     spec (application databasePool clickHouse storageClient)
     itemSpec (application databasePool clickHouse storageClient)
 

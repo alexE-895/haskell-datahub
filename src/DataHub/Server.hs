@@ -57,6 +57,7 @@ import DataHub.API (API, apiProxy)
 import DataHub.Observability.Metrics
   ( metricsMiddleware
   )
+import DataHub.RequestLimits (requestLimitsMiddleware)
 import DataHub.Observability.RequestLog
   ( requestObservabilityMiddleware
   )
@@ -869,7 +870,7 @@ application
   -> StorageClient
   -> Application
 application databasePool clickHouse storage =
-  serveWithContext
+  requestLimitsMiddleware $ serveWithContext
     apiProxy
     (customErrorFormatters :. EmptyContext)
     (server databasePool clickHouse storage)

@@ -4,7 +4,7 @@ module DataHub.Analytics.Outbox
   ( claimPendingEvents
   , enqueueAnalyticsEvent
   , markEventFailed
-  , markEventProcessed
+  , deliverClaimedEvent
   ) where
 
 import Data.Aeson
@@ -20,6 +20,7 @@ import qualified Data.Text.Encoding as Text
 import Data.Time (UTCTime)
 import Database.PostgreSQL.Simple
   ( Connection
+  , Only (Only)
   , execute
   , query
   , withTransaction
@@ -111,21 +112,27 @@ claimPendingEvents pool workerId batchSize =
 
       pure (map toAnalyticsEvent rows)
 
-markEventProcessed
+deliverClaimedEvent
   :: DatabasePool
   -> Text
   -> Int64
   -> IO ()
-markEventProcessed pool workerId eventId =
-  withResource pool $ \connection -> do
-
-    _ <-
-      execute
-        connection
-        "UPDATE analytics_outbox SET processed_at = NOW(), locked_at = NULL, locked_by = NULL, last_error = NULL WHERE id = ? AND locked_by = ?"
-        (eventId, workerId)
-
-    pure ()
+  -> IO Bool
+deliverClaimedEvent pool workerId eventId deliver =
+  withResource pool $ \connection ->
+    withTransaction connection $ do
+      -- Fence stale batch owners, including while the external send is in flight.
+      rows <- query connection
+        "SELECT id FROM analytics_outbox WHERE id = ? AND locked_by = ? AND processed_at IS NULL FOR UPDATE"
+        (eventId, workerId) :: IO [Only Int64]
+      if null rows
+        then pure False
+        else do
+          deliver
+          _ <- execute connection
+            "UPDATE analytics_outbox SET processed_at = NOW(), locked_at = NULL, locked_by = NULL, last_error = NULL WHERE id = ?"
+            (Only eventId)
+          pure True
 
 markEventFailed
   :: DatabasePool

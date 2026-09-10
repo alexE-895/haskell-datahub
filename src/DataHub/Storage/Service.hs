@@ -51,6 +51,7 @@ import System.FilePath
 import DataHub.Database
   ( DatabasePool
   )
+import DataHub.RequestLimits (maxRequestBodyBytes)
 
 import DataHub.Storage.Minio
   ( StorageClient
@@ -79,7 +80,7 @@ data StorageServiceError
 
 maxFileSize :: Int64
 maxFileSize =
-  10 * 1024 * 1024
+  fromIntegral maxRequestBodyBytes
 
 uploadStoredFile
   :: DatabasePool

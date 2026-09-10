@@ -37,7 +37,12 @@ Transactional analytics pipeline:
 3. Background worker claims pending events.
 4. Events are delivered to ClickHouse.
 5. Processed state is persisted.
-6. Replay is idempotent by `event_id`.
+6. Sequential replay skips events already visible in ClickHouse by `event_id`.
+
+Each send checks ownership under a PostgreSQL row lock, preventing stale batch
+owners from sending after another worker reclaims the event. Delivery is
+at-least-once, not exactly-once: a timed-out ClickHouse insert can still complete
+after a retry's existence check. See [delivery limits](docs/TRADEOFFS.md#delivery-guarantees).
 
 ```mermaid
 graph LR
@@ -45,7 +50,7 @@ graph LR
     API -->|Business transaction| PG[(PostgreSQL)]
     API -->|Outbox event| PG
     Worker[Analytics Worker] -->|Claim pending events| PG
-    Worker -->|Idempotent delivery| CH[(ClickHouse)]
+    Worker -->|At-least-once delivery| CH[(ClickHouse)]
 ```
 
 ClickHouse uses MergeTree, monthly partitioning, LowCardinality columns, 365-day TTL and an event-id Bloom data-skipping index.
@@ -200,7 +205,11 @@ cabal run exe:haskell-datahub -- clickhouse-migrate
 
 ## Tests
 
-The integration suite covers health/readiness, categories, items, pagination, transactional outbox, ClickHouse delivery, replay idempotency, external sync and storage lifecycle.
+The integration suite covers health/readiness, categories, items, pagination, transactional outbox, concurrent ownership, ClickHouse delivery, sequential replay, external sync and storage lifecycle.
+
+Middleware checks need no running databases: `cabal test middleware-tests`.
+They cover early request limits (including unknown-length uploads), the exact
+10 MiB boundary, and bounded metric route labels.
 
 ```bash
 bash scripts/RUN_TESTS_CI.sh
